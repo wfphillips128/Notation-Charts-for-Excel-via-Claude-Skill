@@ -270,9 +270,11 @@ template library is unbuilt.
 
 ## Related
 
-`panel-charts` builds a grid of small charts in Excel as one chart object. C13
-is its first caller and the two are designed to fit: that skill supplies the
-geometry, this one supplies the notation.
+[`panel-charts`](https://github.com/wfphillips128/Panel-Charts-for-Excel-via-Claude-Skill)
+builds a grid of small charts in Excel as one chart object. C13 is its first
+caller and the two are designed to fit: that skill supplies the geometry, this
+one supplies the notation. It has to be installed beside this skill for C13D to
+build from source - see "The one dependency worth explaining" in the README.
 
 `viz-design` covers general chart craft and non-IBCS® palettes. Use it when the
 work does not need a formal notation standard; use this skill when it does.

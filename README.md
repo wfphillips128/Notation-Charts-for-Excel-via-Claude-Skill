@@ -168,7 +168,9 @@ scripts. Set `IBCS_BUILD` to put it elsewhere.
 `C13D` draws fifteen locations as small multiples in a **single native chart
 object**, not fifteen copies of one chart whose axes drift apart the first time
 a figure changes. Excel has no panel chart type, so that grid is built by a
-companion skill, `panel-charts`, which is not in this repository yet.
+companion skill,
+[`panel-charts`](https://github.com/wfphillips128/Panel-Charts-for-Excel-via-Claude-Skill),
+which lives in its own repository.
 
 The sheet in the shipped workbook is complete. Rebuilding *that one sheet* from
 source needs the companion: install it beside this skill, or set `PANEL_CHARTS`
