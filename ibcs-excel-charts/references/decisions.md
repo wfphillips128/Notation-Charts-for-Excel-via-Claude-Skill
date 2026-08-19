@@ -2249,3 +2249,30 @@ the next COM call arrives while Excel is still repainting seventeen sheets of
 charts. Polling `Application.CalculationState` until it reads `xlDone` turns an
 intermittent failure into a short wait. A test that fails once in three runs
 teaches people to re-run it, which is how a real failure gets re-run away.
+
+## The exported picture that was never there
+
+`--export-dir` finished reporting "exported tier images", and the C13D panel
+grid it had just written was **zero bytes**. Nothing raised. `Chart.Export`
+returns success while writing an empty file when Excel is still mid-relayout,
+and the panel grid triggers it reliably: it is the largest chart in the set and
+the last thing drawn on its sheet, so the layout is still settling when the
+export is asked for.
+
+This is the same class as the collapsed bars - a check that passed while the
+artefact was wrong - and it went unnoticed longer, because a build that says it
+exported images is not something anyone re-opens.
+
+`export_chart_png` now activates the sheet, selects the object on retry, and
+**checks the file has a non-zero size** before calling it done, up to three
+attempts. A stale file from an earlier run is deleted first, or it would read
+as success. A failure returns a string into the build's `problems` list rather
+than raising, because an unexportable picture is worth reporting and is not
+worth throwing away a workbook that built correctly.
+
+The guard was already in the companion skill - `panel_excel._export_png`, where
+the behaviour was first measured, and where the comment says the larger column
+and bar grids trigger it. It should have been carried across with the panel
+engine and was not. When a companion skill's helper exists because of a
+measured Excel behaviour, the behaviour does not stop applying at the skill
+boundary.

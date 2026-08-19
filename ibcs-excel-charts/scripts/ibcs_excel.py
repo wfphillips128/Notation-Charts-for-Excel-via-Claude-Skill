@@ -5358,6 +5358,41 @@ def verify_page_setup(sheet) -> list[str]:
     return problems
 
 
+def export_chart_png(excel, sheet, obj, path: Path) -> str | None:
+    """Export one chart object, and prove a real file came out.
+
+    `Chart.Export` reports success while writing a **zero-byte file** when
+    Excel is mid-relayout, which the panel grid reliably triggers - it is the
+    largest chart in the set and the last thing drawn on its sheet. Nothing
+    raises, so the build used to finish reporting an export that had not
+    happened, and the emptiness was only found by trying to open the picture.
+
+    Activating the sheet and selecting the object forces the layout to settle;
+    the size check is what turns a silent failure into a reported one. The
+    same guard lives in `panel_excel._export_png` in the companion skill, which
+    is where the behaviour was first measured.
+
+    Returns None on success, or a problem string for the caller's list - an
+    unexportable picture is worth reporting but not worth throwing away a
+    built workbook for.
+    """
+    path.unlink(missing_ok=True)          # else a stale file reads as success
+    excel.ScreenUpdating = True
+    sheet.Activate()
+    for attempt in range(3):
+        try:
+            if attempt:
+                obj.Select()
+            obj.Chart.Export(str(path))
+        except Exception:                                     # noqa: BLE001
+            continue
+        if path.exists() and path.stat().st_size > 0:
+            sheet.Range("A1").Select()
+            return None
+    return (f"chart export wrote nothing for {path.name} - Excel reported "
+            f"success and left an empty file, after 3 attempts")
+
+
 def build(templates: list[D.Template], out: Path, keep_open: bool = False,
           export_dir: Path | None = None, simple: bool = False,
           doc: Path | None = None) -> int:
@@ -5418,7 +5453,10 @@ def build(templates: list[D.Template], out: Path, keep_open: bool = False,
                 # Prefixed, because tier names repeat across templates.
                 for obj in objects:
                     name = f"{sheet.Name}_{obj.Name}.png"
-                    obj.Chart.Export(str(export_dir / name))
+                    failed = export_chart_png(excel, sheet, obj,
+                                              export_dir / name)
+                    if failed:
+                        problems.append(failed)
                 print(f"  exported tier images to {export_dir}")
 
         wb.Sheets(1).Activate()
