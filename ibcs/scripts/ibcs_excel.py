@@ -167,7 +167,20 @@ def apply_scenario(fmt, scenario: str, *, point=None) -> None:
         fmt.Fill.ForeColor.RGB = rgb(spec.fill)
 
     if point is not None:
+        # A MARKER CANNOT TAKE A PATTERN FILL. `Patterned()` above is accepted
+        # without error and does nothing - Fill.Type reads back as -2 (mixed)
+        # and the head draws exactly as it did before. Calibrated, because it
+        # is silent: the forecast pin heads on C03A were solid dark for months
+        # while the code that was meant to hatch them ran every build.
+        #
+        # So a hatched scenario becomes a HOLLOW head: the hatch's own ground
+        # colour with the scenario's border. That is already how this notation
+        # says "not measured" for plan and budget, so it is a fallback within
+        # the notation rather than a compromise outside it. The SVG, which has
+        # no such limit, still hatches - and that divergence is recorded in
+        # references/decisions.md.
         point.MarkerForegroundColor = rgb(spec.outline or spec.fill)
+        point.MarkerBackgroundColor = rgb(spec.fill)
         return
 
     if spec.outline:

@@ -44,6 +44,7 @@ import os
 import shutil
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 try:
@@ -57,6 +58,27 @@ import ibcs_paths as P
 
 XL_VALUE = 2
 EXCEL_BUSY = -2147418111
+XL_CALC_DONE = 0
+
+
+def recalc(excel, tries: int = 400) -> None:
+    """Recalculate, and wait until Excel has actually finished.
+
+    `Application.Calculate()` returns before the calculation is done on a
+    workbook this size - seventeen sheets of charts all repainting - and the
+    next COM call is then refused outright with RPC_E_CALL_REJECTED. That
+    reads as a flaky test, and it is not: it is this test asking a question
+    while Excel is still working. `CalculationState` is the documented way to
+    know, and polling it turns an intermittent failure into a short wait.
+    """
+    excel.Calculate()
+    for _ in range(tries):
+        try:
+            if int(excel.CalculationState) == XL_CALC_DONE:
+                return
+        except Exception:                                     # noqa: BLE001
+            pass                       # busy enough to refuse even this
+        time.sleep(0.05)
 FACTOR = 100.0
 
 # The complex workbook, which carries all seventeen sheets.
@@ -195,7 +217,7 @@ def check_tier_sheets(wb, excel, names, simple: bool = False) -> list[str]:
             for cell in _typed_cells(sheet, [column], layout.first_row,
                                      layout.last_row()):
                 cell.Value = cell.Value * FACTOR
-        excel.Calculate()
+        recalc(excel)
 
         rates: dict[str, list[tuple[str, float]]] = {}
         for spec in layout.tiers:
@@ -273,7 +295,7 @@ def check_table_sheets(wb, excel, names) -> list[str]:
         for cell in _typed_cells(sheet, typed, layout.first_row,
                                  layout.last_row(t)):
             cell.Value = cell.Value * FACTOR
-        excel.Calculate()
+        recalc(excel)
 
         for key in layout.panels:
             chart = sheet.ChartObjects(f"panel_{key}").Chart
@@ -336,7 +358,7 @@ def check_structure_sheets(wb, excel, names) -> list[str]:
                                  1, sheet.UsedRange.Row
                                  + sheet.UsedRange.Rows.Count - 1):
             cell.Value = cell.Value * FACTOR
-        excel.Calculate()
+        recalc(excel)
 
         for panel in panels:
             chart = sheet.ChartObjects(f"panel_{panel.key}").Chart
@@ -387,7 +409,7 @@ def check_line_sheets(wb, excel, names) -> list[str]:
                 continue
             for cell in _typed_cells(sheet, range(1, 14), r, r):
                 cell.Value = cell.Value * FACTOR
-        excel.Calculate()
+        recalc(excel)
 
         for chart_name in charts:
             chart = sheet.ChartObjects(chart_name).Chart

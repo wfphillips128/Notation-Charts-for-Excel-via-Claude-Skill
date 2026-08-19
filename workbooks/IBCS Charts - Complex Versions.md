@@ -1,34 +1,110 @@
-# IBCS Charts - Complex Versions - how it is built
+# Building `IBCS Charts - Complex Versions.xlsx` by hand in Excel
 
-Every formula quoted here was **read back out of `IBCS Charts - Complex Versions.xlsx`** after it was written, so this document and that workbook cannot disagree. Where it says a formula sits in `C03A!E13`, it does.
+This is the same workbook, done manually - no macros, no add-ins, no code. Work through Part 1 once and you have the sheet every template in the library sits on; Part 2 builds the charts on top of it.
+
+**Every range, formula, colour, gap width and axis bound below was read back out of `IBCS Charts - Complex Versions.xlsx` after it was written.** Where this says a formula sits in `C03A!E13`, it does; where it says a fill is `#404040`, that is the value in the file. The prose was written once. The numbers are not typed twice, which is the only way a document like this stays true to the thing it describes.
+
+## What you need
 
 | | |
 |---|---|
-| Sheets | 18 (a Read me and 17 templates) |
-| Formula cells | 7119 |
-| Typed cells | 1434 |
-| Chart objects | 40 |
-| Distinct formula shapes | 389 |
+| Excel | 2016 or later, Windows or Mac. Nothing here needs 365 |
+| Time | about an hour for your first tier stack, twenty minutes after |
+| Skills | writing a formula, inserting a chart, and `Ctrl+1` |
 
-> **One note on what you will see if you open the XML.** Excel stores functions added after 2007 with an `_xlfn.` prefix - `_xlfn.AGGREGATE`, `_xlfn.UNICHAR`. That is a storage detail; you type them without it. This document strips the prefix everywhere.
+`Ctrl+1` opens the Format pane for whatever is selected, and it is the single most useful key in this whole exercise. `Cmd+1` on a Mac.
+
+Two habits will save you most of the pain:
+
+- **Use the Current Selection dropdown.** Chart Format tab, far left. Series in these charts are deliberately thin, invisible, or stacked under each other, and hunting for them with the mouse is miserable. Pick them from the list by name instead.
+- **Name every chart as you create it.** Click the chart, then type the name into the Name Box (left of the formula bar) and press Enter. The names used below are the ones in the workbook, and by the time you have three overlapping charts on a sheet you will want them.
+
+## The one idea
+
+**A chart in this notation is several charts, stacked, sharing one category axis.**
+
+A measure and a variance are different units and different scales, so they cannot share a value axis - but they describe the same twelve months, so they must line up. Excel will not do that inside one chart object. So each tier is its own chart, sized and positioned in points so that category 1 of the top tier sits directly above category 1 of the bottom one.
+
+```
+   Delta PY%    |  pins, own scale, own chart object
+   Delta PY     |  columns, own scale, own chart object
+   Contribution |  columns, own scale, own chart object
+                 Jan Feb Mar Apr ...   <- one shared category axis
+```
+
+Everything else in this guide is in service of that, or of the second idea: **the reader edits cells, never the chart.**
+
+## The notation you are reproducing
+
+IBCS is a notation, not a style guide: the same meaning must always take the same visual form. Four fills carry most of it, and these are the values in this workbook:
+
+| Scenario | Means | Fill | Border |
+|---|---|---|---|
+| AC | actual - it happened | solid `#404040` | none |
+| PY | prior year - it happened, earlier | solid `#A6A6A6` | none |
+| PL / BU | plan or budget - fictitious | **no fill** | `#404040` |
+| FC | forecast - expected | **Wide upward diagonal**, `#404040` on `#F2F2F2` | `#404040` |
+
+| Variance | Means | Fill |
+|---|---|---|
+| good | favourable impact | `#8CB400` |
+| bad | adverse impact | `#FF0000` |
+| neutral | no direction to it | `#0064FF` |
+
+> **Colour is by impact, not by sign.** A cost 40 over plan is a positive number and a bad outcome, so it is red. If you colour on `>0` you will get every cost overrun green, and the chart will be confidently wrong.
+
+> **IBCS prescribes no colour codes.** Rule UN 4.1 says so outright. These hex values are this project's house palette, not a requirement of the standard.
+
+## What is in this workbook
+
+| Sheet | What it is | Charts |
+|---|---|---|
+| [C01A](#c01a) | a structure chart - net sales | 3 |
+| [C02A](#c02a) | a structure chart - net sales | 1 |
+| [C03A](#c03a) | a tier stack - contribution | 3 |
+| [C04A](#c04a) | a tier stack - net sales | 3 |
+| [C05X](#c05x) | a tier stack - net sales | 3 |
+| [C06F](#c06f) | a tier stack - net sales | 3 |
+| [C07C](#c07c) | a line sheet - net sales | 1 |
+| [C08H](#c08h) | a line sheet - raw material | 3 |
+| [C09C](#c09c) | an XY plot - net sales | 1 |
+| [C10D](#c10d) | an XY plot - product market portfolio | 1 |
+| [C11A](#c11a) | a driver tree - roi tree | 6 |
+| [C12A](#c12a) | a tier stack - profit and loss statement | 4 |
+| [C13D](#c13d) | a panel grid - net profit | 2 |
+| [T01B](#t01b) | a table with drawn columns - profit after tax | 0 |
+| [T02A](#t02a) | a table with drawn columns - profit after tax | 4 |
+| [T03A](#t03a) | a table with drawn columns - profit after tax | 0 |
+| [T04A](#t04a) | a table with drawn columns - profit after tax | 2 |
 
 ---
 
-## What every sheet has in common
+# Part 1 - The skeleton every sheet shares
 
-Ten techniques carry the whole workbook. Read these once and the sheet-by-sheet section below is mostly addresses.
+Seven steps. They are the same seven whichever chart you are going to build on top, so they are here once rather than seven times. `C03A` is used for the addresses; every other sheet is the same shape with different columns.
 
-### 1. Six typed lines, and every word derived from them
+## Step 1 - Six typed lines at the top, and nothing else typed
 
-Rows 1 to 6 of every sheet are the only text anybody types: entity, measure, unit, period, reference scenario, message. The subject line the reader sees is a formula over them:
+Rows 1 to 6 of column A are labels, and column B is the only text anybody ever types:
+
+| Row | A | B |
+|---|---|---|
+| 1 | Entity | Furniture Inc. |
+| 2 | Measure | Contribution |
+| 3 | Unit | kEUR |
+| 4 | Period | 2025 |
+| 5 | Reference | PY |
+| 6 | Message | During the next two months the contribution will be below previous year but we expect an ... |
+
+Row 7 is the **subject line**, and it is a formula:
 
 ```
 =B2&" in "&B3
 ```
 
-Read from `C03A!B7`. Retype the unit and the subject line follows.
+Read from `C03A!B7`.
 
-Tier captions are formulas over the same cells, so a caption cannot describe a comparison the sheet is not making:
+Then the tier captions, one per drawn tier that needs one:
 
 ```
 ="Δ"&$B$5&"%"
@@ -36,41 +112,72 @@ Tier captions are formulas over the same cells, so a caption cannot describe a c
 
 Read from `C03A!B9`.
 
-On a chart sheet the caption *cell* is then linked to a text box on the chart - two hops, one source. **Nothing a chart says is typed into the chart.** Type it in a cell and link the box to the cell, every time.
+This is the part people skip, and it is the part that makes the sheet worth keeping. **Nothing a chart says may be typed into the chart.** Every text box on the finished chart is *linked* to one of these cells, so retyping `kEUR` as `kGBP` in `B3` changes the subject line and every caption at once. Type it into the chart and it is a lie the first time the data changes.
 
-### 2. Two zones, and nothing straddles them
+To link a text box: draw it, then with the box selected click in the **formula bar**, type `=` and click the cell. Not into the box - into the formula bar. It is the one place in Excel where that is the whole technique.
 
-Each sheet is a data zone of declared width on the left and the charts to its right, with the chart zone's left edge measured from where the data ends. The print area is the chart zone alone:
+## Step 2 - Two zones, and nothing straddles them
+
+The sheet is a **data zone** on the left of declared width, and the **charts** to its right. The print area is the chart zone alone - the data is the input, not the deliverable.
 
 | Sheet | Cells used | Print area |
 |---|---|---|
-| C01A | `A1:F104` | `'C01A'!$G$1:$R$36` |
-| C02A | `A1:V47` | `'C02A'!$W$1:$AI$73` |
-| C03A | `A1:AC24` | `'C03A'!$AD$1:$AO$37` |
-| C04A | `A1:Y31` | `'C04A'!$Z$1:$AR$32` |
-| C05X | `A1:AU28` | `'C05X'!$AV$1:$BI$46` |
-| C06F | `A1:AM31` | `'C06F'!$AN$1:$BG$35` |
-| C07C | `A1:M59` | `'C07C'!$N$1:$AA$36` |
-| C08H | `A1:U65` | `'C08H'!$V$1:$AL$81` |
-| C09C | `A1:E226` | `'C09C'!$F$1:$T$46` |
-| C10D | `A1:E32` | `'C10D'!$F$1:$T$40` |
-| C11A | `A1:H62` | `'C11A'!$I$4:$Z$88` |
-| C12A | `A1:AU32` | `'C12A'!$AV$1:$BS$33` |
-| C13D | `A1:BU106` | `'C13D'!$A$109:$N$148` |
-| T01B | `A1:O35` | `'T01B'!$A$9:$O$35` |
-| T02A | `A1:AB34` | `'T02A'!$A$9:$J$35` |
-| T03A | `A1:H35` | `'T03A'!$A$9:$H$35` |
-| T04A | `A1:P35` | `'T04A'!$A$9:$F$36` |
+| C01A | `A1:F104` | `G1:R36` |
+| C02A | `A1:V47` | `W1:AI73` |
+| C03A | `A1:AC24` | `AD1:AO37` |
+| C04A | `A1:Y31` | `Z1:AR32` |
+| C05X | `A1:AU28` | `AV1:BI46` |
+| C06F | `A1:AM31` | `AN1:BG35` |
+| C07C | `A1:M59` | `N1:AA36` |
+| C08H | `A1:U65` | `V1:AL81` |
+| C09C | `A1:E226` | `F1:T46` |
+| C10D | `A1:E32` | `F1:T40` |
+| C11A | `A1:H62` | `I4:Z88` |
+| C12A | `A1:AU32` | `AV1:BS33` |
+| C13D | `A1:BU106` | `A109:N148` |
+| T01B | `A1:O35` | `A9:O35` |
+| T02A | `A1:AB34` | `A9:J35` |
+| T03A | `A1:H35` | `A9:H35` |
+| T04A | `A1:P35` | `A9:F36` |
 
-**A table sheet is the other way round.** On T01B, T02A, T03A, T04A the grid *is* the deliverable, so the print area is the grid - starting below the six typed title rows, which are excluded for exactly the reason a chart sheet excludes its data zone: they are the input.
+A **table** sheet is the other way round: on T01B, T02A, T03A, T04A the grid *is* the deliverable, so the print area is the grid, starting below the six typed title rows. Same rule - the print area holds what you are publishing and the typed inputs are not it.
 
-C13D parks the charts **below** the data rather than beside it, because the panel engine owns its own columns to the right. Same rule, read the other way: the print area holds the deliverable and nothing else, so it goes wherever the data does not.
+> **Never AutoFit a column a chart is positioned against.** The charts are placed in points, measured from where the data zone ends. One long customer name and AutoFit moves that boundary, and the charts end up drawn on top of the source data. Set column widths by hand: **Home -> Format -> Column Width**.
 
-**Never `AutoFit` a data block a chart is positioned against.** One long string moves the boundary and the charts end up drawn over the source data. Column widths here are declared, never computed from content.
+## Step 3 - The data block
 
-### 3. Splitting a series by what it means, not by its sign
+On `C03A` the headers are on row **12** (`A12:AC12`) and the data runs rows **13 to 24**.
 
-A variance is drawn in two colours, and Excel gives one colour to a series. So the split happens in the *cells*: one column per direction, each `NA()` where the other owns the point.
+| Column | Header | Typed or derived |
+|---|---|---|
+| A | Period | **typed** (text) |
+| B | Scenario | **typed** (text) |
+| C | PY | **typed** |
+| D | Measure | **typed** |
+| E | ΔPY | formula |
+| F | ΔPY% | formula |
+| G | Measure AC | formula |
+| H | Measure FC | formula |
+| I | ΔPY up | formula |
+| J | ΔPY down | formula |
+| K | ΔPY% up | formula |
+| L | ΔPY% down | formula |
+| M | up length | formula |
+| N | down length | formula |
+| ... | 15 more, all formulas | |
+
+Two columns earn special mention because they are notation rather than data:
+
+- **A scenario column.** One of `AC`, `PY`, `PL`, `BU`, `FC` per row. This is what later decides which fill a bar gets, so it is a *value* in a cell and not a colour somebody applied. That is the whole reason a forecast can turn into an actual by typing over one cell.
+- **A sign or kind column**, on the waterfall templates: `+1` / `-1`, or `total` / `state` / `variance`. The cascade formulas read it.
+
+Shade the typed cells so a reader can see what is theirs to edit, and leave everything else unshaded - including the subtotals, which is the point.
+
+## Step 4 - Split every drawn series by what it means
+
+This is the step that surprises people, and everything downstream depends on it.
+
+**Excel gives one colour to a series.** So a variance that is green when favourable and red when adverse cannot be one series - it has to be two, split in the *cells*, each holding `NA()` where the other owns the point:
 
 ```
 =IF($E13>0,$E13,NA())
@@ -78,25 +185,33 @@ A variance is drawn in two colours, and Excel gives one colour to a series. So t
 
 Read from `C03A!I13`.
 
-`NA()` and not `""` - an empty string plots as a **zero**, which puts a bar of nothing on the axis where there should be no bar at all. That one substitution is the most common way to get a chart that looks broken for no visible reason.
+Do the same wherever a fill changes for any reason: actual against forecast, plan against budget, an increase against a decrease.
 
-The same split does the work for impact: within one variance column of a statement the favourable values sit on **both** sides of the axis, because a cost line up is adverse and a cost line down is favourable. Split by impact, never by sign, or every cost overrun comes out green.
+> ### `NA()`, never `""`
+>
+> An empty string is **not** an empty cell. Excel plots it as a **zero**, so every gap becomes a bar of nothing sitting on the axis. `NA()` is a genuine gap. Also set **Select Data -> Hidden and Empty Cells -> Show empty cells as: Gaps**.
+>
+> This is the single most common way to end up with a chart that looks broken for no visible reason.
 
-### 4. The scale block - why the charts follow your numbers
+And once more, because it is the difference between a correct chart and a confident lie: **split by impact, not by sign.** Within one variance column of a P&L the favourable values sit on both sides of the axis, because a cost line going up is adverse and a cost line going down is favourable.
 
-This is the one technique with no equivalent in a hand-drawn chart, and it exists because **Excel will not bind an axis bound to a formula**. An axis maximum is a number you type; it cannot be `=MAX(...)`. So a chart built for one set of figures clips or shrinks the moment somebody pastes their own over the top.
+## Step 5 - The scale block, so the charts follow *your* numbers
 
-The way round it is to invert the problem: instead of scaling the axis to the data, **scale the data to a fixed axis**. Three parts:
+Skip this one and everything still works - until somebody pastes their own figures in, and every bar clips or shrinks to nothing.
 
-**A span cell** - one per group of tiers sharing a unit - holding the largest magnitude anywhere in that group:
+**Excel will not bind an axis bound to a formula.** An axis maximum is a number you type into a box; it cannot be `=MAX(...)`. So a chart built for one set of figures is built for *those* figures.
+
+The way round it is to turn the problem over. Instead of scaling the axis to the data, **scale the data to a fixed axis**. Three parts:
+
+**1. A span cell** - one per group of tiers that share a unit - holding the largest magnitude anywhere in that group:
 
 ```
 =MAX(AGGREGATE(4,6,C13:C24,D13:D24,E13:E24,I13:I24,J13:J24),-AGGREGATE(5,6,C13:C24,D13:D24,E13:E24,I13:I24,J13:J24),0.000000001)
 ```
 
-Read from `C03A!O13`. `AGGREGATE(4,6,...)` is MAX ignoring errors, which matters because half these columns are deliberately `NA()`.
+Read from `C03A!O13`. `AGGREGATE(4,6,...)` is MAX ignoring errors, which matters because half of these columns are deliberately `NA()`.
 
-**A scaled copy of every drawn column**, which is what the chart actually reads:
+**2. A scaled copy of every column a chart reads**, which is what you actually plot:
 
 ```
 =C13/$O$13
@@ -104,16 +219,19 @@ Read from `C03A!O13`. `AGGREGATE(4,6,...)` is MAX ignoring errors, which matters
 
 Read from `C03A!Q13`.
 
-**Axis bounds divided by the same span.** Dividing both the values and the bounds by one number is visually a no-op at today's figures and follows the data at any others. Zero divided by anything is zero, so the zero line, the reference rules and every caption positioned from plot geometry stay exactly where they were.
+**3. Axis bounds divided by the same span.** If your measure tier was designed to run 0 to 230, you type `0` and `230/span` - or rather, you work out that number once and type the result.
 
-Two consequences worth knowing before you copy this:
+Dividing both the values and the bounds by one number is a visual no-op at today's figures and follows the data at any others. And because zero divided by anything is zero, the zero line, the reference rules and every caption positioned from plot geometry stay exactly where they were.
 
-- **The scaled columns are hidden, not parked far right.** A hidden column measures zero width, so the machinery can be added to a sheet without moving a single chart on it.
-- **It cannot be used where an axis is read.** Every chart in this library hides its value axis except the XY pair, which show gridlines and tick labels - and dividing those by a span would print `0.25` where the data says `29.16%`. Those two are fitted at build time instead: correct for whatever data is present when the sheet is built, but not live on edit. That is a stated limit, not an oversight.
+Hide the scaled columns - **right-click the column headers -> Hide**. A hidden column measures zero width, so you can add all of this to a sheet without moving a single chart on it.
 
-### 5. Text columns, because a linked label ignores its own format
+> **Where this cannot be used.** Every chart in this library hides its value axis, which is why dividing by a span is invisible. The two XY sheets are the exception - they show gridlines and tick labels, and dividing those by a span would print `0.25` where the data says `29.16%`. Those two get their axis fitted to the data once, at build time, and do not follow an edit. If you are building a chart whose axis a reader actually reads, do the same.
 
-A data label linked to a cell shows the **cell's** value and ignores the label's number format, so a variance of `31.61057692` prints every one of those digits. The formatting therefore has to happen in a cell:
+## Step 6 - A text column for every label
+
+A data label linked to a cell shows the **cell's** value and ignores the label's own number format. Link a label to a raw variance and you get `31.61057692` printed beside a chart that says `+32`.
+
+So the formatting happens in a cell:
 
 ```
 =IF(ISNA(D13),"",TEXT(D13,"0"))
@@ -121,39 +239,255 @@ A data label linked to a cell shows the **cell's** value and ignores the label's
 
 Read from `C03A!S13`.
 
-The label is then linked to that column. The cell says exactly what the chart says, which is also why the two can be checked against each other.
+One such column per labelled series, blank where that series has no point. Then in step 2.9 you point the labels at these columns with **Value From Cells**.
 
-### 6. Variances, and the relative variance that has no answer
+This is also why you cannot skip it: the label range applies to the whole series, so a shared column would print the other series' numbers on your bars.
 
-```
-=D13-C13
-```
+## Step 7 - Page setup, before you forget
 
-Read from `C03A!E13`.
+1. Select the range the charts cover, then **Page Layout -> Print Area -> Set Print Area**.
+2. **Page Layout -> Orientation**, then **Scale to Fit: Width 1 page, Height 1 page**.
+3. **View -> uncheck Gridlines**, so the worksheet grid does not print behind the charts.
+4. Check nothing else is inside the print area. Cell contents under a chart print straight through it.
 
-A relative variance divides by the reference, which may be zero, and `NA()` is the honest answer - a bar of nothing, not a bar of zero:
+---
 
-```
-=IF(C13=0,NA(),(D13-C13)/C13*100)
-```
+# Part 2 - Worked builds
 
-Read from `C03A!F13`.
+One per family present in this workbook. The tier stack is done in full; the rest are written as what differs from it.
 
-### 7. The waterfall cascade
+## Building a tier stack, on `C03A`
 
-A waterfall is not a chart type here; it is two columns of arithmetic and an invisible series. Each row carries a **running level** and the level it **starts from**, and the sign column says whether the row adds or subtracts:
+The full walkthrough. Every other family in Part 2 is written as *what differs from this*, so read it even if the chart you want is a different shape.
 
-```
-=G13+B14*C14
-```
+`C03A` is contribution over 12 categories, in 3 tiers.
 
-Read from `C12A!G14`. The running level: the previous level plus this row's signed value.
+### 2.1 The columns, and what each is for
 
-The floating bar is then the difference between the two, drawn over an invisible series holding the start. A subtotal row breaks the chain by reading the level directly instead of adding to it - which is what makes a subtotal a column from zero rather than a floating step.
+Headers on row **12**, data rows **13-24**. Typed cells are `C13:D24` - everything else is a formula.
 
-### 8. A total is data
+| Column | Header | Formula in row 13 |
+|---|---|---|
+| A | Period | **typed** - `Jan`, and down |
+| B | Scenario | **typed** - `AC`, and down |
+| C | PY | **typed** - `114.6953405017921`, and down |
+| D | Measure | **typed** - `128`, and down |
+| E | ΔPY | `=D13-C13` |
+| F | ΔPY% | `=IF(C13=0,NA(),(D13-C13)/C13*100)` |
+| G | Measure AC | `=IF($B13="AC",$D13,NA())` |
+| H | Measure FC | `=IF($B13="AC",NA(),$D13)` |
+| I | ΔPY up | `=IF($E13>0,$E13,NA())` |
+| J | ΔPY down | `=IF($E13<0,$E13,NA())` |
+| K | ΔPY% up | `=IF($F13>0,$F13,NA())` |
+| L | ΔPY% down | `=IF($F13<0,$F13,NA())` |
+| M | up length | `=IF($F13>0,$F13,0)` |
+| N | down length | `=IF($F13<0,-$F13,0)` |
+| O | span unit | `=MAX(AGGREGATE(4,6,C13:C24,D13:D24,E13:E24,I13:I24,J13:J24),-AGGREGATE(5,6,C13:C24,D13:D24,E13:E24,I13:I24,J13:J24),0.000000001)` |
+| P | span rel | `=MAX(AGGREGATE(4,6,K13:K24,L13:L24,M13:M24,N13:N24),-AGGREGATE(5,6,K13:K24,L13:L24,M13:M24,N13:N24),0.000000001)` |
+| Q | ref scaled | `=C13/$O$13` |
+| R | measure scaled | `=D13/$O$13` |
+| S | measure text | `=IF(ISNA(D13),"",TEXT(D13,"0"))` |
+| T | var_abs scaled | `=E13/$O$13` |
+| U | var_abs text | `=IF(ISNA(E13),"",TEXT(E13,"+0;-0"))` |
+| V | abs_up scaled | `=I13/$O$13` |
+| W | abs_dn scaled | `=J13/$O$13` |
+| X | rel_up scaled | `=K13/$P$13` |
+| Y | rel_up text | `=IF(ISNA(K13),"",TEXT(K13,"+0.0;-0.0"))` |
+| Z | rel_dn scaled | `=L13/$P$13` |
+| AA | rel_dn text | `=IF(ISNA(L13),"",TEXT(L13,"+0.0;-0.0"))` |
+| AB | rel_up_len scaled | `=M13/$P$13` |
+| AC | rel_dn_len scaled | `=N13/$P$13` |
 
-A total with components is a formula, never an input. A total that does not follow its parts is the same lie a static variance colour is:
+Enter each formula in row 13 and fill down to row 24.
+
+### 2.2 Check the numbers before you go near a chart
+
+If these are right the chart cannot go far wrong; if they are wrong no amount of formatting will save it.
+
+| Row | Period | Scenario | PY | Measure | ΔPY | ΔPY% | Measure AC | Measure FC |
+|---|---|---|---|---|---|---|---|---|
+| 13 | Jan | AC | 114.6953405017921 | 128 | `=D13-C13` | `=IF(C13=0,NA(),(D13-C13)/C13*100)` | `=IF($B13="AC",$D13,NA())` | `=IF($B13="AC",NA(),$D13)` |
+| 14 | Feb | AC | 133.63636363636363 | 147 | `=D14-C14` | `=IF(C14=0,NA(),(D14-C14)/C14*100)` | `=IF($B14="AC",$D14,NA())` | `=IF($B14="AC",NA(),$D14)` |
+| 15 | Mar | AC | 140.78674948240166 | 136 | `=D15-C15` | `=IF(C15=0,NA(),(D15-C15)/C15*100)` | `=IF($B15="AC",$D15,NA())` | `=IF($B15="AC",NA(),$D15)` |
+| 16 | Apr | AC | 151.9125683060109 | 139 | `=D16-C16` | `=IF(C16=0,NA(),(D16-C16)/C16*100)` | `=IF($B16="AC",$D16,NA())` | `=IF($B16="AC",NA(),$D16)` |
+| ... |  |  |  |  |  |  |  |  |
+
+### 2.3 Insert the bottom tier
+
+The measure tier is the one everything else is aligned to, so it goes first.
+
+1. Select the category labels and the scaled measure columns together - hold **Ctrl** for the second block, and include the header row so the series get their names.
+2. **Insert -> Clustered Column.**
+3. Name it `tier_measure` in the Name Box.
+4. `Ctrl+1` on the chart area -> **Size**: width **520 pt**, height **244 pt**. Under **Properties**, set **Don't move or size with cells** - otherwise inserting a row later moves your chart.
+
+Then the settings that are not defaults:
+
+| Where | Setting | Value |
+|---|---|---|
+| any series -> Series Options | Gap Width | **23%** |
+| same pane | Series Overlap | **76%** |
+| value axis -> Axis Options | Minimum / Maximum | **0** / **1.09** |
+| value axis -> Labels | Label Position | **None** |
+| value axis -> Line | | **No line**, no tick marks |
+| chart area -> Border | | **No line** |
+| Chart Elements (+) | Gridlines, Legend, Title | **all off** |
+
+> The axis bounds are not round numbers because of the scale block in Part 1 step 5: they are the range the geometry was designed in, divided by the span cell. Multiply them back by the span and you get the round numbers you started from.
+
+### 2.4 The fills - this is the notation
+
+Select each series from **Chart Format -> Current Selection**, then `Ctrl+1` -> Fill & Line:
+
+| Series | Fill | Line |
+|---|---|---|
+| `PY` | solid #A6A6A6 | no line |
+| `AC` | solid #404040 | no line |
+
+**The forecast is per point, not per series.** On `AC` the series carries the actual fill and the forecast months are overridden individually:
+
+| Points | Fill |
+|---|---|
+| 1-9 | solid #404040 |
+| 10-12 | Wide upward diagonal, #404040 on #F2F2F2 |
+
+To do it: click the series once to select all of it, then click **again** on the single bar you want - that selects the point - then `Ctrl+1` -> Fill -> **Pattern fill**, and pick the pattern from the gallery with the foreground and background above.
+
+> Yes, this is manual, and yes it is the one thing on the sheet that does not follow the data. If the forecast starts a month earlier next quarter you must re-apply it. The alternative is a separate series for the forecast points, driven by the scenario column - more columns, no clicking. Both are used in this workbook; look at which sheets have an `AC` and an `FC` series and which have one series with overridden points.
+
+### 2.5 The variance tier above it
+
+Same construction, different scale, and it is a **separate chart object**. Insert it exactly as in 2.3, from the two variance columns you split in Part 1 step 4.
+
+| | |
+|---|---|
+| Name | `tier_var_abs` |
+| Type | Clustered Column |
+| Size | 520 x 104 pt |
+| Axis | -0.173 to 0.263 |
+| Gap width | 47% |
+| Overlap | 100% |
+
+| Series | Fill |
+|---|---|
+| `ΔPY` | no fill |
+| `ΔPY up` | solid #8CB400 |
+| `ΔPY dn` | solid #FF0000 |
+
+The invisible one is not a mistake. A variance drawn from a baseline that is not zero needs a transparent segment underneath holding the offset - the same trick a waterfall uses. Where the variance runs from zero, that series is still there and still zero, so the two tiers stay interchangeable.
+
+### 2.6 The relative-variance tier: pins
+
+A relative variance is drawn as a **pin** - a thin stem with a head marker - and there is no pin chart type. The obvious construction, a very narrow column, does not work: `Gap Width` caps at 500%, which on a twelve-category axis bottoms out around a 9px stem where the reference draws 5.
+
+What works is a **line chart with markers, no line, and a custom Y error bar as the stem**. An error bar's weight is in *points*, so the stem is exactly as thin as you ask for.
+
+1. **Insert -> Line with Markers** from the two split relative-variance columns.
+2. Each series -> `Ctrl+1` -> Fill & Line -> **Line: No line**. The markers are the pins; the line between them means nothing.
+3. Marker Options -> **Square**, size to taste, and set **Marker Fill** and **Marker Border** - not the series fill, which on a marker-only series is not what you are looking at. The head carries the *minuend's* scenario, which is what says whether a relative variance was measured or forecast.
+4. With the series selected, **Chart Elements (+) -> Error Bars -> More Options**. Direction **Minus** for the series that goes up and **Plus** for the one that goes down, End Style **No Cap**, then **Custom -> Specify Value** and point *both* boxes at that series' stem-length column.
+5. The error bar -> `Ctrl+1` -> Line -> width **3.8pt**.
+
+| Series | Marker | Stem | Stem colour | Heads |
+|---|---|---|---|---|
+| `ΔPY% up` | Square | 3.8pt | #8CB400 | points 1-9: head #404040, border #404040; points 10-12: head #F2F2F2, border #404040 |
+| `ΔPY% down` | Square | 3.8pt | #FF0000 | points 1-9: head #404040, border #404040; points 10-12: head #F2F2F2, border #404040 |
+
+The two stems are different colours because the direction of a variance is its meaning, and an error bar takes one colour for a whole series - which is *why* there are two series here rather than one.
+
+Four things about error bars are not in the documentation and each one fails quietly:
+
+- The stem-length column must be **entirely numeric** - write `0` where the series has no point, never `NA()`. An error-bar range with one non-numeric cell is discarded whole.
+- **End Style must be No Cap.** The cap is the little crossbar; with it on, your pin has a T on the end.
+- The **direction** is the counter-intuitive one. An up-pin's stem runs *down* from the marker to zero, so it is a **Minus** error bar.
+- On a line series, clicking a point and setting its **Line** colour styles the *connecting segment*, not the marker border. Use **Marker Border** for the border.
+
+### 2.7 Line the tiers up - the step that makes it one figure
+
+Three charts that nearly line up look like a mistake. They have to be exact, and you get there by typing numbers, not by dragging.
+
+For each chart: `Ctrl+1` -> **Size & Properties**, and set Height, Width, and under Position the Horizontal and Vertical offsets:
+
+| Chart | Left | Top | Width | Height |
+|---|---|---|---|---|
+| `tier_var_rel` | 683 | 96 | 520 | 104 |
+| `tier_var_abs` | 683 | 204 | 520 | 104 |
+| `tier_measure` | 683 | 312 | 520 | 244 |
+
+That is not enough on its own. Two charts of the same width can still have plot areas of different widths, because Excel sizes the plot area around whatever labels it has to fit. So set the **plot area** too: click inside the plot (not the chart), `Ctrl+1`, and set its size and position:
+
+| Chart | Plot left | Plot top | Plot width | Plot height |
+|---|---|---|---|---|
+| `tier_var_rel` | 52.1 | 6 | 452 | 77 |
+| `tier_var_abs` | 52.1 | 6 | 452 | 84 |
+| `tier_measure` | 46 | 6 | 452 | 210 |
+
+> **Set the plot area size before the position, and check it after.** Excel treats a plot-area assignment as a request: it will quietly adjust what you asked for to fit the labels, and it applies width and position in an order that means setting one can undo the other. Set them, then look at the numbers again.
+
+Only the bottom tier keeps its category axis labels. On the others, select the category axis -> Labels -> **Label Position: None**. The labels are shared, so they are printed once.
+
+### 2.8 Captions and the title block
+
+Draw a text box for each of the four title lines and each tier caption, and link every one of them to its cell as in Part 1 step 1 - select the box, click in the formula bar, type `=`, click the cell.
+
+Set **Word Wrap off** on the captions, and turn off **Resize shape to fit text**. A caption that rewraps when the unit changes from `kEUR` to `kUSD` will push itself over the chart.
+
+### 2.9 The data labels
+
+For each series that carries labels:
+
+1. Select the series -> **Chart Elements (+) -> Data Labels**.
+2. `Ctrl+1` -> Label Options -> tick **Value From Cells**, and select that series' text column from Part 1 step 6.
+3. **Untick Value**, and untick everything else. Only Value From Cells stays on.
+4. Position: **Outside End** for columns that grow from an axis, **Inside End** where the label would otherwise leave the plot.
+
+| Series | Labelled |
+|---|---|
+| `tier_var_rel` / `ΔPY% up` | yes |
+| `tier_var_rel` / `ΔPY% down` | yes |
+| `tier_var_abs` / `ΔPY` | yes |
+| `tier_measure` / `AC` | yes |
+
+### 2.10 Check it before you send it
+
+Numbers first, appearance second.
+
+- [ ] **Every scenario has the right fill.** Solid dark for actual, solid light for prior year, outlined for plan, hatched for forecast. One wrong fill and the chart says something untrue.
+- [ ] **Variance colour follows impact, not sign.** Check a cost line that went up: it must be red.
+- [ ] **The tiers line up.** Put a ruler on the screen - category 1 of the top tier over category 1 of the bottom.
+- [ ] **The variance axis carries its reference.** A reader must be able to tell what the variance is *from* without a legend.
+- [ ] **No stray zero labels** where a series has no point - that is the `""`-instead-of-`NA()` symptom.
+- [ ] **Every label is linked**, not typed. Change a number and watch them all move.
+- [ ] **Retype the unit in `B3`.** The subject line and every caption must follow. If one does not, it was typed into the chart.
+- [ ] **Nothing prints under the charts.** Print Preview, one page.
+
+### 2.11 What goes wrong, and why
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| A bar of nothing sitting on the axis | a formula returns `""` where it means `NA()` | step 4 |
+| Every cost overrun is green | the split is on sign, not impact | step 4 |
+| Bars clip the moment new data is pasted | axis bounds typed as data values with no scale block | step 5 |
+| A label prints `31.61057692` | linked to the raw cell, not a `TEXT()` column | step 6 |
+| Labels stop updating | typed into the chart instead of linked | step 1 |
+| Tiers nearly line up | plot area sizes not set, only chart sizes | step 2.7 |
+| Charts drawn over the data | AutoFit moved the zone boundary | step 2 |
+| A pin has a T on the end | error-bar End Style is not No Cap | step 2.6 |
+| Stray lines between pin heads | a point's Line was styled instead of its Marker Border | step 2.6 |
+| An error bar does nothing | its range contains an `NA()` or a blank | step 2.6 |
+| The whole chart re-scales when a row is inserted | chart Properties left on Move and size with cells | step 2.3 |
+
+---
+
+## Building a table with drawn columns, on `T04A`
+
+Part 1 applies unchanged. What differs:
+
+- **The grid is the deliverable.** There is no chart zone; the table itself is what prints, from row 14 down. Set the column widths by hand and the row heights to a fixed pitch, because the drawn columns are positioned against those rows.
+- **Scenario notation lives in the borders.** A column header over an actual gets a bottom border in the scenario's own weight and colour; the double rule that says *plan* is Excel's own **xlDouble** border style - the outlined fill seen edge-on. Nothing here needs a drawn shape.
+- **A drawn column is an ordinary variance chart** sized to the row pitch and positioned over the block it belongs to, with no axis, no gridlines and a transparent chart area. It is the tier stack of Part 2, one column wide.
+- **The threshold is a cell.** Conditional formatting tests against the same cell the footnote displays, so the note and the colouring cannot disagree. IBCS requires the threshold to be stated wherever red is applied.
+- **Subtotals are formulas**, never typed:
 
 ```
 =SUM(B15:B18)
@@ -161,87 +495,142 @@ A total with components is a formula, never an input. A total that does not foll
 
 Read from `T04A!B19`.
 
-### 9. Scenario fills, the forecast hatch, and pins
 
-These are formatting rather than formulas, so they are not readable out of the cells - but they are the notation, so they belong here:
+**The charts on this sheet, as built:**
 
-| What | How it is drawn |
-|---|---|
-| AC - actual | solid dark fill |
-| PY - prior year | solid light fill |
-| PL / BU - plan or budget | outlined, no fill |
-| FC - forecast | hatched, 45 degrees ascending |
-| absolute variance | a column or bar, red or green **by impact** |
-| relative variance | a **pin**: a thin stem with a head marker |
-
-A pin has no chart type. It is a line series with the line hidden, markers on, and a **custom Y error bar** as the stem - the error bar's weight is in points, so the stem is exactly as thin as it should be, where a very narrow column bottoms out around 9px because `GapWidth` caps at 500. The head carries the minuend's scenario fill, which is what says whether a relative variance was measured or forecast.
-
-Where a variance runs off the end of its panel, the bar is **clipped** and the label carries the overflow, because a bar drawn at full length off the plot says nothing about having been cut:
-
-```
-=IF(ISNA(F13),NA(),MEDIAN(-31.5,F13,238.5))
-```
-
-Read from `C12A!AP13`.
-
-### 10. Page setup
-
-Every sheet prints on one page: print area set to the chart zone alone, `FitToPagesWide/Tall = 1`, worksheet gridlines off. The data zone is deliberately outside the print area - it is the input, not the deliverable.
-
-### The traps that fail silently
-
-Each of these produces a wrong-looking sheet rather than an error.
-
-| Trap | What you see |
-|---|---|
-| `""` where `NA()` was meant | a bar of nothing sitting on the axis |
-| `OR()` guarding a lookup | `#REF!` across every spacer row - `OR` evaluates all its arguments, nested `IF`s short-circuit |
-| a data label typed rather than linked | it stops tracking the cell the first time a figure changes |
-| a label linked to a raw cell | full floating-point precision printed beside a rounded chart |
-| `AutoFit` on the data block | charts drawn on top of the source data |
-| an axis bound typed as a number | the chart clips the day somebody pastes their own figures |
-| variance colour taken from the sign | every cost overrun green |
+| Chart | Type | Left | Top | Width | Height | Series |
+|---|---|---|---|---|---|---|
+| `panel_dpl` | Clustered Bar | 308.1 | 205.1 | 244.4 | 318.9 | 3 |
+| `panel_dplp` | Clustered Bar | 548.6 | 205.1 | 244.4 | 318.9 | 3 |
 
 ---
 
-## Sheet by sheet
+## Building a structure chart, on `C01A`
 
-| Sheet | Family | Formulas | Typed | Charts |
-|---|---|---|---|---|
-| [C01A](#c01a) | structure | 95 | 36 | 3 |
-| [C02A](#c02a) | structure | 197 | 57 | 1 |
-| [C03A](#c03a) | tier stack | 281 | 24 | 3 |
-| [C04A](#c04a) | tier stack | 366 | 38 | 3 |
-| [C05X](#c05x) | tier stack | 689 | 25 | 3 |
-| [C06F](#c06f) | tier stack | 644 | 33 | 3 |
-| [C07C](#c07c) | line | 183 | 36 | 1 |
-| [C08H](#c08h) | line | 262 | 41 | 3 |
-| [C09C](#c09c) | XY | 331 | 362 | 1 |
-| [C10D](#c10d) | XY | 2 | 60 | 1 |
-| [C11A](#c11a) | tree | 123 | 21 | 6 |
-| [C12A](#c12a) | tier stack | 861 | 48 | 4 |
-| [C13D](#c13d) | panel | 2124 | 415 | 2 |
-| [T01B](#t01b) | table | 190 | 104 | 0 |
-| [T02A](#t02a) | table | 424 | 64 | 4 |
-| [T03A](#t03a) | table | 114 | 42 | 0 |
-| [T04A](#t04a) | table | 233 | 28 | 2 |
+Part 1 applies unchanged. What differs:
+
+- **One data block per panel**, side by side, and every panel on **one shared scale** - which is the entire point of the template. Work out the tallest column across all panels, round it up, and give every panel that maximum. Do not let Excel scale each one.
+- **A stacked category is not a stacked scenario.** Where the bands are business areas, every band is an actual, so the fill cannot carry the scenario any more. The *column* carries it - a plan column is outlined - and the bands take a light-to-dark ramp.
+- **Insert as a Stacked Column (or Bar)**, one series per band, bottom band first.
+- **Small bands get no label.** Below about 3%% of the axis a number does not fit, and a label that overlaps its neighbour is worse than an absent one. That test belongs in the label formula, not in your judgement:
+
+```
+=IF(ISNA(D13),"",TEXT(D13,"0"))
+```
+
+Read from `C03A!S13`.
+
+
+**The charts on this sheet, as built:**
+
+| Chart | Type | Left | Top | Width | Height | Series |
+|---|---|---|---|---|---|---|
+| `panel_area` | chart type -4111 | 407.5 | 81 | 300 | 430 | 6 |
+| `panel_industry` | chart type -4111 | 731.5 | 81 | 96 | 430 | 7 |
+| `panel_region` | chart type -4111 | 851.5 | 81 | 96 | 430 | 6 |
+
+---
+
+## Building a line sheet, on `C07C`
+
+Part 1 applies unchanged. What differs:
+
+- **The data runs in rows, not columns** - one row per series across the periods. Everything in Part 1 still applies, transposed.
+- **A line must show its markers.** The line between two points is a connector, not data - there is no value at half past March - so the marker is what says measured, planned or expected. That is how one line changes from actual to forecast part way along, and it is why you cannot use a plain line chart here.
+- **It is a combo chart**: columns for the monthly tier, lines for the cumulative. **Chart Design -> Change Chart Type -> Combo**, and set the type per series.
+- **A flow and a level cannot share an x position.** A stock is drawn at period *boundaries* - an opening balance and one closing per period - while the movements that produce it sit inside the periods they belong to. Give them the same x and neither means anything.
+
+**The charts on this sheet, as built:**
+
+| Chart | Type | Left | Top | Width | Height | Series |
+|---|---|---|---|---|---|---|
+| `line_chart` | chart type -4111 | 644 | 81 | 620 | 223.5 | 7 |
+
+---
+
+## Building an XY plot, on `C09C`
+
+Part 1 applies unchanged. What differs:
+
+- **This is the one family that shows its value axis**, so the scale block of Part 1 step 5 **cannot be used**. Divide by a span here and the axis prints `0.25` where your data says `29.16%`. Fit the axis to the data once instead, and accept that it will not follow an edit.
+- **Insert -> Scatter, or Bubble.** Each category that needs its own colour is its own series, because a series takes one colour.
+- **A mark's area carries the value; its radius never does.** Bubble area goes as the value, so the radius goes as its square root. Excel's *Represent bubble size as: Area* does this for you - check it is set, because *Width* is also on that menu and it overstates a large value by the square of the ratio.
+- **A colour that carries a category needs a key; a scenario never does.** Solid dark means measured on every IBCS page ever printed. A product line means nothing outside its own chart, so it takes an accent colour - deliberately not one of the scenario greys - and a legend. The presence of the key is itself the signal that the colour is not notation.
+- **Where marks overlap, paint order is notation.** The mark the reader is being asked about goes last, even where it is the smaller one. Reorder with **Select Data -> the up/down arrows**.
+
+**The charts on this sheet, as built:**
+
+| Chart | Type | Left | Top | Width | Height | Series |
+|---|---|---|---|---|---|---|
+| `xy_C09C` | Scatter (X Y) | 310.5 | 99 | 700 | 560 | 6 |
+
+---
+
+## Building a driver tree, on `C11A`
+
+Part 1 applies unchanged. What differs:
+
+- **Each box is its own small chart**, and the arithmetic between them is text boxes and lines. There is no tree chart type and there is no way to fake one.
+- **Boxes that share a unit share a scale.** Return, net sales and capital are all kEUR, so all three get the same points-per-unit - otherwise the tree invites a comparison it does not support.
+- **The connectors state a calculation.** `ROS x Turnover = ROI` is written on the page, so the reader can check the tree against itself.
+- Group the whole thing (**select all -> right-click -> Group**) once it is right, or moving it will take it apart.
+
+**The charts on this sheet, as built:**
+
+| Chart | Type | Left | Top | Width | Height | Series |
+|---|---|---|---|---|---|---|
+| `tree_roi` | Clustered Column | 441.5 | 243.2 | 232 | 302.2 | 1 |
+| `tree_ros` | Clustered Column | 715.5 | 115 | 232 | 244.1 | 1 |
+| `tree_turnover` | Clustered Column | 715.5 | 362.9 | 232 | 308.5 | 1 |
+| `tree_return` | Clustered Column | 989.5 | 163 | 232 | 94.1 | 1 |
+| `tree_net_sales` | Clustered Column | 989.5 | 266.1 | 232 | 180 | 1 |
+| `tree_capital` | Clustered Column | 989.5 | 452.3 | 232 | 171.6 | 1 |
+
+---
+
+## Building a panel grid, on `C13D`
+
+Part 1 applies unchanged. What differs:
+
+- **Do not build this by copying one chart R x C times.** That is the usual advice and it leaves you maintaining a dozen charts whose axes drift apart the first time the data changes.
+- The whole grid is **one chart object**, with the value axis divided into *bands* - one per grid row - and each panel's data arithmetically squeezed into its band:
+
+```
+plotted = band + (value - vmin) / (vmax - vmin) * band_frac
+```
+
+- Everything that is not data - the dividers, the panel titles, the tick labels - is drawn by extra XY scatter series pretending to be chart furniture, on the **secondary** axes.
+- This one is genuinely hard to do by hand. The companion `panel-charts` skill builds it, and its `references/manual-steps.md` is a walkthrough of its own; that is the right document for this family rather than a paragraph here.
+
+**The charts on this sheet, as built:**
+
+| Chart | Type | Left | Top | Width | Height | Series |
+|---|---|---|---|---|---|---|
+| `panel_grid` | chart type -4111 | 0 | 1637 | 720 | 500 | 14 |
+| `reference_panel` | Clustered Column | 549.9 | 2015.8 | 155.1 | 95.9 | 1 |
+
+---
+
+# Part 3 - Sheet by sheet
+
+What is on each sheet, for rebuilding one template rather than learning the method.
 
 ### C01A
 
 > Planned net sales in 2026 will increase by 12.2 kEUR (+12%) mainly due to software growth of 9.1 kEUR (+23%)
 
-**Structure.** Categories stacked inside a column or bar, on one scale shared by every panel on the sheet.
+**A structure chart.**
 
 | | |
 |---|---|
 | Cells used | `A1:F104` |
-| Print area | `'C01A'!$G$1:$R$36` |
+| Print area | `G1:R36` |
 | Formula cells | 95, in 6 shapes |
-| Typed number cells | 36 |
+| Typed cells | 36 |
 
-**Typed values** - 36 cells in `B10:F31`. Everything else on the sheet is a formula over these. The cells a reader is meant to edit are shaded; a sheet may also park a constant the engine needs in this range, so go by the shading rather than by the count.
+**Typed values** - 36 cells in `B10:F31`. Everything else is a formula over these. The cells a reader is meant to edit are shaded; a sheet may also park a constant the engine needs in that range, so go by the shading.
 
-**The formulas behind everything else.** Cells that say the same thing about their own position are one row here; the example is the first of them, in ordinary A1.
+**Every formula on the sheet.** Cells that say the same thing about their own position are one row here, with the range they cover and the first of them written out.
 
 | Cells | Named | Example | Formula |
 |---|---|---|---|
@@ -252,32 +641,52 @@ Each of these produces a wrong-looking sheet rather than an error.
 | `B24` | Total | `B24` | `=SUM(B18:B23)` |
 | `B34` | span | `B34` | `=MAX(AGGREGATE(4,6,B15:F15,B24:B24,B32:B32),0.000000001)` |
 
-**Chart objects**, in points from the top left of the sheet. The positions are what make separate charts read as one figure, so they are declared rather than dragged.
+**Charts**, in points from the top left of the sheet.
 
-| Name | Left | Top | Width | Height | Series | Axis |
-|---|---|---|---|---|---|---|
-| `panel_area` | 407.5 | 81 | 300 | 430 | 6 | 0 .. 1.0517 |
-| `panel_industry` | 731.5 | 81 | 96 | 430 | 7 | 0 .. 1.0517 |
-| `panel_region` | 851.5 | 81 | 96 | 430 | 6 | 0 .. 1.0517 |
+| Name | Type | Left | Top | Width | Height | Series | Axis |
+|---|---|---|---|---|---|---|---|
+| `panel_area` | chart type -4111 | 407.5 | 81 | 300 | 430 | 6 | 0 to 1.0517 |
+| `panel_industry` | chart type -4111 | 731.5 | 81 | 96 | 430 | 7 | 0 to 1.0517 |
+| `panel_region` | chart type -4111 | 851.5 | 81 | 96 | 430 | 6 | 0 to 1.0517 |
 
-An axis range that is not round - `0.9` rather than `900` - is the scale block at work: the bounds were divided by the span cell, exactly as the values were. Multiply an axis bound by its span and you get back the range the geometry was measured in.
+| Chart | Series | Fill | Marker | Stem | Labelled |
+|---|---|---|---|---|---|
+| `panel_area` | `Software` | points 1-4: solid #404040; points 5-5: solid #FFFFFF | None | - | yes |
+| `panel_area` | `Service` | solid #595959 | None | - | yes |
+| `panel_area` | `Training` | solid #7F7F7F | None | - | yes |
+| `panel_area` | `Consulting` | solid #BFBFBF | None | - | yes |
+| `panel_area` | `Other` | solid #D9D9D9 | None | - | yes |
+| `panel_area` | `Total` | solid #000000 | None | - | yes |
+| `panel_industry` | `Public sector` | solid #404040 | None | - | yes |
+| `panel_industry` | `Finance industry` | solid #595959 | None | - | yes |
+| `panel_industry` | `Consumer goods` | solid #7F7F7F | None | - | yes |
+| `panel_industry` | `Retail` | solid #A6A6A6 | None | - | yes |
+| `panel_industry` | `Engineering` | solid #BFBFBF | None | - | yes |
+| `panel_industry` | `Other` | solid #D9D9D9 | None | - | yes |
+| `panel_industry` | `Total` | solid #000000 | None | - | yes |
+| `panel_region` | `USA` | solid #404040 | None | - | yes |
+| `panel_region` | `Germany` | solid #595959 | None | - | yes |
+| `panel_region` | `Japan` | solid #7F7F7F | None | - | yes |
+| `panel_region` | `Rest of Europe` | solid #BFBFBF | None | - | yes |
+| `panel_region` | `Rest of World` | solid #D9D9D9 | None | - | yes |
+| `panel_region` | `Total` | solid #000000 | None | - | yes |
 
 ### C02A
 
 > In Europe we achieved 3 098 kCHF (83%) of worldwide net sales (3 733 kCHF), USA net sales of 287 kCHF presents the biggest share outside of Europe (8%)
 
-**Structure.** Categories stacked inside a column or bar, on one scale shared by every panel on the sheet.
+**A structure chart.**
 
 | | |
 |---|---|
 | Cells used | `A1:V47` |
-| Print area | `'C02A'!$W$1:$AI$73` |
+| Print area | `W1:AI73` |
 | Formula cells | 197, in 7 shapes |
-| Typed number cells | 57 |
+| Typed cells | 57 |
 
-**Typed values** - 57 cells in `B10:U12`. Everything else on the sheet is a formula over these. The cells a reader is meant to edit are shaded; a sheet may also park a constant the engine needs in this range, so go by the shading rather than by the count.
+**Typed values** - 57 cells in `B10:U12`. Everything else is a formula over these. The cells a reader is meant to edit are shaded; a sheet may also park a constant the engine needs in that range, so go by the shading.
 
-**The formulas behind everything else.** Cells that say the same thing about their own position are one row here; the example is the first of them, in ordinary A1.
+**Every formula on the sheet.** Cells that say the same thing about their own position are one row here, with the range they cover and the first of them written out.
 
 | Cells | Named | Example | Formula |
 |---|---|---|---|
@@ -289,31 +698,36 @@ An axis range that is not round - `0.9` rather than `900` - is the scale block a
 | `B7` | Subject | `B7` | `=B2&IF(B3="",""," in "&B3)` |
 | `B15` | span | `B15` | `=MAX(AGGREGATE(4,6,$B$13:$O$13,$Q$13:$U$13),0.000000001)` |
 
-**Chart objects**, in points from the top left of the sheet. The positions are what make separate charts read as one figure, so they are declared rather than dragged.
+**Charts**, in points from the top left of the sheet.
 
-| Name | Left | Top | Width | Height | Series | Axis |
-|---|---|---|---|---|---|---|
-| `panel_channel` | 1175.5 | 81 | 560 | 520 | 4 | 0 .. 1.0081 |
+| Name | Type | Left | Top | Width | Height | Series | Axis |
+|---|---|---|---|---|---|---|---|
+| `panel_channel` | Stacked Bar | 1175.5 | 81 | 560 | 520 | 4 | 0 to 1.0081 |
 
-An axis range that is not round - `0.9` rather than `900` - is the scale block at work: the bounds were divided by the span cell, exactly as the values were. Multiply an axis bound by its span and you get back the range the geometry was measured in.
+| Chart | Series | Fill | Marker | Stem | Labelled |
+|---|---|---|---|---|---|
+| `panel_channel` | `Direct` | solid #404040 | None | - | yes |
+| `panel_channel` | `Retail` | solid #7F7F7F | None | - | yes |
+| `panel_channel` | `Wholesale` | solid #D9D9D9 | None | - | yes |
+| `panel_channel` | `Total` | no fill | None | - | yes |
 
 ### C03A
 
 > During the next two months the contribution will be below previous year but we expect an annual growth of 81 kEUR (+4.2%) for the full year
 
-**Tier stack.** One chart per tier, stacked along the page and sharing a category axis. The tiers are separate chart objects positioned to line up, because one chart cannot carry two value axes that both start at zero.
+**A tier stack.**
 
 | | |
 |---|---|
 | Cells used | `A1:AC24` |
-| Print area | `'C03A'!$AD$1:$AO$37` |
-| Hidden engine columns | `O` |
+| Print area | `AD1:AO37` |
+| Hidden scale columns | `O` |
 | Formula cells | 281, in 25 shapes |
-| Typed number cells | 24 |
+| Typed cells | 24 |
 
-**Typed values** - `C13:D24`. Everything else on the sheet is a formula over these. The cells a reader is meant to edit are shaded; a sheet may also park a constant the engine needs in this range, so go by the shading rather than by the count.
+**Typed values** - `C13:D24`. Everything else is a formula over these. The cells a reader is meant to edit are shaded; a sheet may also park a constant the engine needs in that range, so go by the shading.
 
-**The formulas behind everything else.** Cells that say the same thing about their own position are one row here; the example is the first of them, in ordinary A1.
+**Every formula on the sheet.** Cells that say the same thing about their own position are one row here, with the range they cover and the first of them written out.
 
 | Cells | Named | Example | Formula |
 |---|---|---|---|
@@ -343,33 +757,41 @@ An axis range that is not round - `0.9` rather than `900` - is the scale block a
 | `O13` | span unit | `O13` | `=MAX(AGGREGATE(4,6,C13:C24,D13:D24,E13:E24,I13:I24,J13:J24),-AGGREGATE(5,6,C13:C24,D13:D24,E13:E24,I13:I24,J13:J24),0.000000001)` |
 | `P13` | span rel | `P13` | `=MAX(AGGREGATE(4,6,K13:K24,L13:L24,M13:M24,N13:N24),-AGGREGATE(5,6,K13:K24,L13:L24,M13:M24,N13:N24),0.000000001)` |
 
-**Chart objects**, in points from the top left of the sheet. The positions are what make separate charts read as one figure, so they are declared rather than dragged.
+**Charts**, in points from the top left of the sheet.
 
-| Name | Left | Top | Width | Height | Series | Axis |
-|---|---|---|---|---|---|---|
-| `tier_var_rel` | 683 | 96 | 520 | 104 | 2 | -0.8671 .. 1.3295 |
-| `tier_var_abs` | 683 | 204 | 520 | 104 | 3 | -0.173 .. 0.263 |
-| `tier_measure` | 683 | 312 | 520 | 244 | 2 | 0 .. 1.09 |
+| Name | Type | Left | Top | Width | Height | Series | Axis |
+|---|---|---|---|---|---|---|---|
+| `tier_var_rel` | Line with Markers | 683 | 96 | 520 | 104 | 2 | -0.8671 to 1.3295 |
+| `tier_var_abs` | Clustered Column | 683 | 204 | 520 | 104 | 3 | -0.173 to 0.263 |
+| `tier_measure` | Clustered Column | 683 | 312 | 520 | 244 | 2 | 0 to 1.09 |
 
-An axis range that is not round - `0.9` rather than `900` - is the scale block at work: the bounds were divided by the span cell, exactly as the values were. Multiply an axis bound by its span and you get back the range the geometry was measured in.
+| Chart | Series | Fill | Marker | Stem | Labelled |
+|---|---|---|---|---|---|
+| `tier_var_rel` | `ΔPY% up` | points 1-9: head #404040, border #404040; points 10-12: head #F2F2F2, border #404040 | Square | 3.8pt #8CB400 | yes |
+| `tier_var_rel` | `ΔPY% down` | points 1-9: head #404040, border #404040; points 10-12: head #F2F2F2, border #404040 | Square | 3.8pt #FF0000 | yes |
+| `tier_var_abs` | `ΔPY` | no fill | None | - | yes |
+| `tier_var_abs` | `ΔPY up` | points 1-9: solid #8CB400; points 10-12: Wide upward diagonal, #8CB400 on #FFFFFF | None | - |  |
+| `tier_var_abs` | `ΔPY dn` | points 1-9: solid #FF0000; points 10-12: Wide upward diagonal, #FF0000 on #FFFFFF | None | - |  |
+| `tier_measure` | `PY` | solid #A6A6A6 | None | - |  |
+| `tier_measure` | `AC` | points 1-9: solid #404040; points 10-12: Wide upward diagonal, #404040 on #F2F2F2 | None | - | yes |
 
 ### C04A
 
 > Compared to plan California (+34 kUSD) and Ohio (+31 kUSD) have the greatest absolute positive variances in net sales
 
-**Tier stack.** One chart per tier, stacked along the page and sharing a category axis. The tiers are separate chart objects positioned to line up, because one chart cannot carry two value axes that both start at zero.
+**A tier stack.**
 
 | | |
 |---|---|
 | Cells used | `A1:Y31` |
-| Print area | `'C04A'!$Z$1:$AR$32` |
-| Hidden engine columns | `M` |
+| Print area | `Z1:AR32` |
+| Hidden scale columns | `M` |
 | Formula cells | 366, in 21 shapes |
-| Typed number cells | 38 |
+| Typed cells | 38 |
 
-**Typed values** - `C13:D31`. Everything else on the sheet is a formula over these. The cells a reader is meant to edit are shaded; a sheet may also park a constant the engine needs in this range, so go by the shading rather than by the count.
+**Typed values** - `C13:D31`. Everything else is a formula over these. The cells a reader is meant to edit are shaded; a sheet may also park a constant the engine needs in that range, so go by the shading.
 
-**The formulas behind everything else.** Cells that say the same thing about their own position are one row here; the example is the first of them, in ordinary A1.
+**Every formula on the sheet.** Cells that say the same thing about their own position are one row here, with the range they cover and the first of them written out.
 
 | Cells | Named | Example | Formula |
 |---|---|---|---|
@@ -395,33 +817,42 @@ An axis range that is not round - `0.9` rather than `900` - is the scale block a
 | `M13` | span unit | `M13` | `=MAX(AGGREGATE(4,6,E13:E31,C13:C31,D13:D31,G13:G31,H13:H31),-AGGREGATE(5,6,E13:E31,C13:C31,D13:D31,G13:G31,H13:H31),0.000000001)` |
 | `N13` | span rel | `N13` | `=MAX(AGGREGATE(4,6,F13:F31,I13:I31,J13:J31),-AGGREGATE(5,6,F13:F31,I13:I31,J13:J31),0.000000001)` |
 
-**Chart objects**, in points from the top left of the sheet. The positions are what make separate charts read as one figure, so they are declared rather than dragged.
+**Charts**, in points from the top left of the sheet.
 
-| Name | Left | Top | Width | Height | Series | Axis |
-|---|---|---|---|---|---|---|
-| `tier_measure` | 631.5 | 86 | 430 | 400 | 2 | 0 .. 1.0959 |
-| `tier_var_abs` | 1066.5 | 86 | 250 | 400 | 3 | -0.4795 .. 0.2055 |
-| `tier_var_rel` | 1321.5 | 86 | 170 | 400 | 3 | -1.1124 .. 0.599 |
+| Name | Type | Left | Top | Width | Height | Series | Axis |
+|---|---|---|---|---|---|---|---|
+| `tier_measure` | Clustered Bar | 631.5 | 86 | 430 | 400 | 2 | 0 to 1.0959 |
+| `tier_var_abs` | Clustered Bar | 1066.5 | 86 | 250 | 400 | 3 | -0.4795 to 0.2055 |
+| `tier_var_rel` | Clustered Bar | 1321.5 | 86 | 170 | 400 | 3 | -1.1124 to 0.599 |
 
-An axis range that is not round - `0.9` rather than `900` - is the scale block at work: the bounds were divided by the span cell, exactly as the values were. Multiply an axis bound by its span and you get back the range the geometry was measured in.
+| Chart | Series | Fill | Marker | Stem | Labelled |
+|---|---|---|---|---|---|
+| `tier_measure` | `PL` | solid #FFFFFF | None | - |  |
+| `tier_measure` | `AC` | solid #404040 | None | - | yes |
+| `tier_var_abs` | `ΔPL` | no fill | None | - | yes |
+| `tier_var_abs` | `ΔPL up` | solid #8CB400 | None | - |  |
+| `tier_var_abs` | `ΔPL dn` | solid #FF0000 | None | - |  |
+| `tier_var_rel` | `ΔPL%` | no fill | None | - | yes |
+| `tier_var_rel` | `ΔPL% up` | solid #8CB400 | None | - |  |
+| `tier_var_rel` | `ΔPL% dn` | solid #FF0000 | None | - |  |
 
 ### C05X
 
 > We expect a plus of 24 kEUR (+15.6%) vs plan until end of the year because of the positive forecast beginning in September
 
-**Tier stack.** One chart per tier, stacked along the page and sharing a category axis. The tiers are separate chart objects positioned to line up, because one chart cannot carry two value axes that both start at zero.
+**A tier stack.**
 
 | | |
 |---|---|
 | Cells used | `A1:AU28` |
-| Print area | `'C05X'!$AV$1:$BI$46` |
-| Hidden engine columns | `W` |
+| Print area | `AV1:BI46` |
+| Hidden scale columns | `W` |
 | Formula cells | 689, in 61 shapes |
-| Typed number cells | 25 |
+| Typed cells | 25 |
 
-**Typed values** - 25 cells in `D12:E25`. Everything else on the sheet is a formula over these. The cells a reader is meant to edit are shaded; a sheet may also park a constant the engine needs in this range, so go by the shading rather than by the count.
+**Typed values** - 25 cells in `D12:E25`. Everything else is a formula over these. The cells a reader is meant to edit are shaded; a sheet may also park a constant the engine needs in that range, so go by the shading.
 
-**The formulas behind everything else.** Cells that say the same thing about their own position are one row here; the example is the first of them, in ordinary A1.
+**Every formula on the sheet.** Cells that say the same thing about their own position are one row here, with the range they cover and the first of them written out.
 
 | Cells | Named | Example | Formula |
 |---|---|---|---|
@@ -468,33 +899,45 @@ An axis range that is not round - `0.9` rather than `900` - is the scale block a
 
 *21 further named shapes are not listed - this sheet has 61 in all.*
 
-**Chart objects**, in points from the top left of the sheet. The positions are what make separate charts read as one figure, so they are declared rather than dragged.
+**Charts**, in points from the top left of the sheet.
 
-| Name | Left | Top | Width | Height | Series | Axis |
-|---|---|---|---|---|---|---|
-| `tier_var_rel` | 1038.5 | 96 | 620 | 130 | 2 | -0.8182 .. 1.0909 |
-| `tier_wf` | 1038.5 | 236 | 620 | 110 | 5 | 0.8046 .. 1.1494 |
-| `tier_measure` | 1038.5 | 356 | 620 | 330 | 4 | 0 .. 1.1494 |
+| Name | Type | Left | Top | Width | Height | Series | Axis |
+|---|---|---|---|---|---|---|---|
+| `tier_var_rel` | Line with Markers | 1038.5 | 96 | 620 | 130 | 2 | -0.8182 to 1.0909 |
+| `tier_wf` | Stacked Column | 1038.5 | 236 | 620 | 110 | 5 | 0.8046 to 1.1494 |
+| `tier_measure` | Clustered Column | 1038.5 | 356 | 620 | 330 | 4 | 0 to 1.1494 |
 
-An axis range that is not round - `0.9` rather than `900` - is the scale block at work: the bounds were divided by the span cell, exactly as the values were. Multiply an axis bound by its span and you get back the range the geometry was measured in.
+| Chart | Series | Fill | Marker | Stem | Labelled |
+|---|---|---|---|---|---|
+| `tier_var_rel` | `ΔPL% up` | points 1-8: head #404040, border #404040; points 13-17: head #156082, border #FEFFFF; points 9-12: head #F2F2F2, border #404040 | Square | 3.8pt #8CB400 | yes |
+| `tier_var_rel` | `ΔPL% down` | points 1-8: head #404040, border #404040; points 13-17: head #FFFFFF, border #FFFFFF; points 9-12: head #F2F2F2, border #404040 | Square | 3.8pt #FF0000 | yes |
+| `tier_wf` | `base` | no fill | None | - |  |
+| `tier_wf` | `up AC` | solid #8CB400 | None | - | yes |
+| `tier_wf` | `down AC` | solid #FF0000 | None | - | yes |
+| `tier_wf` | `up FC` | Wide upward diagonal, #8CB400 on #FFFFFF | None | - | yes |
+| `tier_wf` | `down FC` | Wide upward diagonal, #FF0000 on #FFFFFF | None | - |  |
+| `tier_measure` | `PY bar` | solid #A6A6A6 | None | - | yes |
+| `tier_measure` | `PL bar` | solid #FFFFFF | None | - | yes |
+| `tier_measure` | `AC bar` | solid #404040 | None | - | yes |
+| `tier_measure` | `FC bar` | Wide upward diagonal, #404040 on #F2F2F2 | None | - | yes |
 
 ### C06F
 
 > In Q3 2025, the total decrease in net sales compared to PY was 343 kUSD
 
-**Tier stack.** One chart per tier, stacked along the page and sharing a category axis. The tiers are separate chart objects positioned to line up, because one chart cannot carry two value axes that both start at zero.
+**A tier stack.**
 
 | | |
 |---|---|
 | Cells used | `A1:AM31` |
-| Print area | `'C06F'!$AN$1:$BG$35` |
-| Hidden engine columns | `T` |
+| Print area | `AN1:BG35` |
+| Hidden scale columns | `T` |
 | Formula cells | 644, in 46 shapes |
-| Typed number cells | 33 |
+| Typed cells | 33 |
 
-**Typed values** - 33 cells in `D12:E30`. Everything else on the sheet is a formula over these. The cells a reader is meant to edit are shaded; a sheet may also park a constant the engine needs in this range, so go by the shading rather than by the count.
+**Typed values** - 33 cells in `D12:E30`. Everything else is a formula over these. The cells a reader is meant to edit are shaded; a sheet may also park a constant the engine needs in that range, so go by the shading.
 
-**The formulas behind everything else.** Cells that say the same thing about their own position are one row here; the example is the first of them, in ordinary A1.
+**Every formula on the sheet.** Cells that say the same thing about their own position are one row here, with the range they cover and the first of them written out.
 
 | Cells | Named | Example | Formula |
 |---|---|---|---|
@@ -541,32 +984,44 @@ An axis range that is not round - `0.9` rather than `900` - is the scale block a
 
 *6 further named shapes are not listed - this sheet has 46 in all.*
 
-**Chart objects**, in points from the top left of the sheet. The positions are what make separate charts read as one figure, so they are declared rather than dragged.
+**Charts**, in points from the top left of the sheet.
 
-| Name | Left | Top | Width | Height | Series | Axis |
-|---|---|---|---|---|---|---|
-| `tier_measure` | 970.5 | 86 | 560 | 430 | 5 | 0 .. 1.0255 |
-| `tier_wf` | 1540.5 | 86 | 140 | 430 | 3 | 0.7458 .. 1.0255 |
-| `tier_var_rel` | 1690.5 | 86 | 200 | 430 | 3 | -1.1111 .. 0.6349 |
+| Name | Type | Left | Top | Width | Height | Series | Axis |
+|---|---|---|---|---|---|---|---|
+| `tier_measure` | Stacked Bar | 970.5 | 86 | 560 | 430 | 5 | 0 to 1.0255 |
+| `tier_wf` | Stacked Bar | 1540.5 | 86 | 140 | 430 | 3 | 0.7458 to 1.0255 |
+| `tier_var_rel` | Clustered Bar | 1690.5 | 86 | 200 | 430 | 3 | -1.1111 to 0.6349 |
 
-An axis range that is not round - `0.9` rather than `900` - is the scale block at work: the bounds were divided by the span cell, exactly as the values were. Multiply an axis bound by its span and you get back the range the geometry was measured in.
+| Chart | Series | Fill | Marker | Stem | Labelled |
+|---|---|---|---|---|---|
+| `tier_measure` | `AC bar` | solid #404040 | None | - | yes |
+| `tier_measure` | `PY short` | solid #A6A6A6 | None | - |  |
+| `tier_measure` | `PL bar` | solid #FFFFFF | None | - | yes |
+| `tier_measure` | `PY bar` | solid #A6A6A6 | None | - | yes |
+| `tier_measure` | `AC total` | solid #404040 | None | - | yes |
+| `tier_wf` | `base` | no fill | None | - |  |
+| `tier_wf` | `step up` | solid #8CB400 | None | - | yes |
+| `tier_wf` | `step down` | solid #FF0000 | None | - | yes |
+| `tier_var_rel` | `ΔPY%` | no fill | None | - | yes |
+| `tier_var_rel` | `ΔPY% up` | solid #8CB400 | None | - |  |
+| `tier_var_rel` | `ΔPY% dn` | solid #FF0000 | None | - |  |
 
 ### C07C
 
 > Till the end of August our net sales was 192 kUSD lower than planned, because … However, we estimate that full year net sales will be higher than budgeted
 
-**Line.** Series laid out in rows rather than columns, one row per series across the periods, with a combo chart over them.
+**A line sheet.**
 
 | | |
 |---|---|
 | Cells used | `A1:M59` |
-| Print area | `'C07C'!$N$1:$AA$36` |
+| Print area | `N1:AA36` |
 | Formula cells | 183, in 21 shapes |
-| Typed number cells | 36 |
+| Typed cells | 36 |
 
-**Typed values** - 36 cells in `B11:M17`. Everything else on the sheet is a formula over these. The cells a reader is meant to edit are shaded; a sheet may also park a constant the engine needs in this range, so go by the shading rather than by the count.
+**Typed values** - 36 cells in `B11:M17`. Everything else is a formula over these. The cells a reader is meant to edit are shaded; a sheet may also park a constant the engine needs in that range, so go by the shading.
 
-**The formulas behind everything else.** Cells that say the same thing about their own position are one row here; the example is the first of them, in ordinary A1.
+**Every formula on the sheet.** Cells that say the same thing about their own position are one row here, with the range they cover and the first of them written out.
 
 | Cells | Named | Example | Formula |
 |---|---|---|---|
@@ -592,30 +1047,38 @@ An axis range that is not round - `0.9` rather than `900` - is the scale block a
 | `M16` | FC cumulative | `M16` | `=SUM(B12:M12)+SUM(B13:M13)` |
 | `B19` | span | `B19` | `=MAX(AGGREGATE(4,6,B11:M11,B12:M12,B13:M13,B14:M14,B15:M15,B16:M16,B17:M17),-AGGREGATE(5,6,B11:M11,B12:M12,B13:M13,B14:M14,B15:M15,B16:M16,B17:M17),0.000000001)` |
 
-**Chart objects**, in points from the top left of the sheet. The positions are what make separate charts read as one figure, so they are declared rather than dragged.
+**Charts**, in points from the top left of the sheet.
 
-| Name | Left | Top | Width | Height | Series | Axis |
-|---|---|---|---|---|---|---|
-| `line_chart` | 644 | 81 | 620 | 223.5 | 7 | 0 .. 1.0387 |
+| Name | Type | Left | Top | Width | Height | Series | Axis |
+|---|---|---|---|---|---|---|---|
+| `line_chart` | chart type -4111 | 644 | 81 | 620 | 223.5 | 7 | 0 to 1.0387 |
 
-An axis range that is not round - `0.9` rather than `900` - is the scale block at work: the bounds were divided by the span cell, exactly as the values were. Multiply an axis bound by its span and you get back the range the geometry was measured in.
+| Chart | Series | Fill | Marker | Stem | Labelled |
+|---|---|---|---|---|---|
+| `line_chart` | `PL month` | solid #FFFFFF | None | - |  |
+| `line_chart` | `AC month` | solid #404040 | None | - | yes |
+| `line_chart` | `FC month` | Wide upward diagonal, #404040 on #F2F2F2 | None | - | yes |
+| `line_chart` | `PL cumulative` | head #FFFFFF, border #404040 | Square | - | yes |
+| `line_chart` | `AC cumulative` | head #404040, border #000000 | Square | - | yes |
+| `line_chart` | `FC cumulative` | head #F2F2F2, border #404040 | Square | - | yes |
+| `line_chart` | `MAT` | head #404040, border #000000 | Square | - | yes |
 
 ### C08H
 
 > Until end of 2025 we plan a slight increase of our raw material stock to 13 tons
 
-**Line.** Series laid out in rows rather than columns, one row per series across the periods, with a combo chart over them.
+**A line sheet.**
 
 | | |
 |---|---|
 | Cells used | `A1:U65` |
-| Print area | `'C08H'!$V$1:$AL$81` |
+| Print area | `V1:AL81` |
 | Formula cells | 262, in 30 shapes |
-| Typed number cells | 41 |
+| Typed cells | 41 |
 
-**Typed values** - 41 cells in `A12:U15`. Everything else on the sheet is a formula over these. The cells a reader is meant to edit are shaded; a sheet may also park a constant the engine needs in this range, so go by the shading rather than by the count.
+**Typed values** - 41 cells in `A12:U15`. Everything else is a formula over these. The cells a reader is meant to edit are shaded; a sheet may also park a constant the engine needs in that range, so go by the shading.
 
-**The formulas behind everything else.** Cells that say the same thing about their own position are one row here; the example is the first of them, in ordinary A1.
+**Every formula on the sheet.** Cells that say the same thing about their own position are one row here, with the range they cover and the first of them written out.
 
 | Cells | Named | Example | Formula |
 |---|---|---|---|
@@ -632,32 +1095,39 @@ An axis range that is not round - `0.9` rather than `900` - is the scale block a
 
 20 unnamed one-off formulas: `B15`, `C15`, `D15`, `E15`, `F15`, `G15`, `H15`, `I15`, `J15`, `K15`, `L15`, `M15`, ....
 
-**Chart objects**, in points from the top left of the sheet. The positions are what make separate charts read as one figure, so they are declared rather than dragged.
+**Charts**, in points from the top left of the sheet.
 
-| Name | Left | Top | Width | Height | Series | Axis |
-|---|---|---|---|---|---|---|
-| `c08_change` | 865 | 81 | 760 | 150 | 1 | -8 .. 4 |
-| `c08_level` | 865 | 241 | 760 | 300 | 3 | -0.3636 .. 1.0909 |
-| `c08_flows` | 865 | 241 | 760 | 300 | 2 | -0.3636 .. 1.0909 |
+| Name | Type | Left | Top | Width | Height | Series | Axis |
+|---|---|---|---|---|---|---|---|
+| `c08_change` | Clustered Column | 865 | 81 | 760 | 150 | 1 | -8 to 4 |
+| `c08_level` | chart type 1 | 865 | 241 | 760 | 300 | 3 | -0.3636 to 1.0909 |
+| `c08_flows` | Clustered Column | 865 | 241 | 760 | 300 | 2 | -0.3636 to 1.0909 |
 
-An axis range that is not round - `0.9` rather than `900` - is the scale block at work: the bounds were divided by the span cell, exactly as the values were. Multiply an axis bound by its span and you get back the range the geometry was measured in.
+| Chart | Series | Fill | Marker | Stem | Labelled |
+|---|---|---|---|---|---|
+| `c08_change` | `Inventory change` | points 1-11: solid #7F7F7F; points 13-20: solid #D9D9D9; points 12-12: Wide upward diagonal, #404040 on #F2F2F2 | None | - | yes |
+| `c08_level` | `level AC` | solid #D9D9D9 | None | - |  |
+| `c08_level` | `level FC` | Wide upward diagonal, #404040 on #F2F2F2 | None | - |  |
+| `c08_level` | `level PL` | solid #F2F2F2 | None | - |  |
+| `c08_flows` | `Increase` | points 1-11: solid #7F7F7F; points 13-20: solid #D9D9D9; points 12-12: Wide upward diagonal, #404040 on #F2F2F2 | None | - | yes |
+| `c08_flows` | `Decrease drawn` | points 1-11: solid #404040; points 13-20: solid #F4F4F4; points 12-12: Wide upward diagonal, #404040 on #F2F2F2 | None | - | yes |
 
 ### C09C
 
 > In 2025 we had 45 products of the product line VA in the gross profit segment of 3 mUSD and above
 
-**Xy.** A scatter or bubble plot. These two are the only charts in the library that show a value axis, which is why they are fitted at build time rather than normalised - see the scale block below.
+**An xy plot.**
 
 | | |
 |---|---|
 | Cells used | `A1:E226` |
-| Print area | `'C09C'!$F$1:$T$46` |
+| Print area | `F1:T46` |
 | Formula cells | 331, in 6 shapes |
-| Typed number cells | 362 |
+| Typed cells | 362 |
 
-**Typed values** - 362 cells in `B11:E226`. Everything else on the sheet is a formula over these. The cells a reader is meant to edit are shaded; a sheet may also park a constant the engine needs in this range, so go by the shading rather than by the count.
+**Typed values** - 362 cells in `B11:E226`. Everything else is a formula over these. The cells a reader is meant to edit are shaded; a sheet may also park a constant the engine needs in that range, so go by the shading.
 
-**The formulas behind everything else.** Cells that say the same thing about their own position are one row here; the example is the first of them, in ordinary A1.
+**Every formula on the sheet.** Cells that say the same thing about their own position are one row here, with the range they cover and the first of them written out.
 
 | Cells | Named | Example | Formula |
 |---|---|---|---|
@@ -668,60 +1138,71 @@ An axis range that is not round - `0.9` rather than `900` - is the scale block a
 | `B7` | Subject | `B7` | `=B2&IF(B3="",""," in "&B3)` |
 | `E163` | VA at 3 mUSD or more | `E163` | `=SUMPRODUCT((D11:D161="VA")*(E11:E161>=3))` |
 
-**Chart objects**, in points from the top left of the sheet. The positions are what make separate charts read as one figure, so they are declared rather than dragged.
+**Charts**, in points from the top left of the sheet.
 
-| Name | Left | Top | Width | Height | Series | Axis |
-|---|---|---|---|---|---|---|
-| `xy_C09C` | 310.5 | 99 | 700 | 560 | 6 | 0 .. 35 |
+| Name | Type | Left | Top | Width | Height | Series | Axis |
+|---|---|---|---|---|---|---|---|
+| `xy_C09C` | Scatter (X Y) | 310.5 | 99 | 700 | 560 | 6 | 0 to 35 |
 
-An axis range that is not round - `0.9` rather than `900` - is the scale block at work: the bounds were divided by the span cell, exactly as the values were. Multiply an axis bound by its span and you get back the range the geometry was measured in.
+| Chart | Series | Fill | Marker | Stem | Labelled |
+|---|---|---|---|---|---|
+| `xy_C09C` | `RX` | head #404040, border #404040 | Circle | - | yes |
+| `xy_C09C` | `X2` | head #FFCE59, border #404040 | Circle | - | yes |
+| `xy_C09C` | `VA` | head #FF6600, border #404040 | Circle | - | yes |
+| `xy_C09C` | `1 mUSD` | solid #000000 | None | - |  |
+| `xy_C09C` | `2 mUSD` | solid #000000 | None | - |  |
+| `xy_C09C` | `3 mUSD` | solid #000000 | None | - |  |
 
 ### C10D
 
 > The two SBUs acquired in December 2025 are positioned in little attractive markets
 
-**Xy.** A scatter or bubble plot. These two are the only charts in the library that show a value axis, which is why they are fitted at build time rather than normalised - see the scale block below.
+**An xy plot.**
 
 | | |
 |---|---|
 | Cells used | `A1:E32` |
-| Print area | `'C10D'!$F$1:$T$40` |
+| Print area | `F1:T40` |
 | Formula cells | 2, in 2 shapes |
-| Typed number cells | 60 |
+| Typed cells | 60 |
 
-**Typed values** - 60 cells in `B11:E32`. Everything else on the sheet is a formula over these. The cells a reader is meant to edit are shaded; a sheet may also park a constant the engine needs in this range, so go by the shading rather than by the count.
+**Typed values** - 60 cells in `B11:E32`. Everything else is a formula over these. The cells a reader is meant to edit are shaded; a sheet may also park a constant the engine needs in that range, so go by the shading.
 
-**The formulas behind everything else.** Cells that say the same thing about their own position are one row here; the example is the first of them, in ordinary A1.
+**Every formula on the sheet.** Cells that say the same thing about their own position are one row here, with the range they cover and the first of them written out.
 
 | Cells | Named | Example | Formula |
 |---|---|---|---|
 | `B7` | Subject | `B7` | `=B2&IF(B3="",""," in "&B3)` |
 | `E10` | PY | `E10` | `=B8&" in "&C8` |
 
-**Chart objects**, in points from the top left of the sheet. The positions are what make separate charts read as one figure, so they are declared rather than dragged.
+**Charts**, in points from the top left of the sheet.
 
-| Name | Left | Top | Width | Height | Series | Axis |
-|---|---|---|---|---|---|---|
-| `xy_C10D` | 321.5 | 99 | 660 | 470 | 3 | 0 .. 1.25 |
+| Name | Type | Left | Top | Width | Height | Series | Axis |
+|---|---|---|---|---|---|---|---|
+| `xy_C10D` | Bubble | 321.5 | 99 | 660 | 470 | 3 | 0 to 1.25 |
 
-An axis range that is not round - `0.9` rather than `900` - is the scale block at work: the bounds were divided by the span cell, exactly as the values were. Multiply an axis bound by its span and you get back the range the geometry was measured in.
+| Chart | Series | Fill | Marker | Stem | Labelled |
+|---|---|---|---|---|---|
+| `xy_C10D` | `PY` | solid #D9D9D9 | None | - | yes |
+| `xy_C10D` | `AC` | solid #404040 | None | - | yes |
+| `xy_C10D` | `ACQ` | solid #0064FF | None | - | yes |
 
 ### C11A
 
 > We plan to achieve a ROI of 19,2% in 2024 despite of increasing invested capital
 
-**Tree.** Boxes and connectors: several small charts and the arithmetic between them, with boxes that share a unit sharing a scale.
+**A driver tree.**
 
 | | |
 |---|---|
 | Cells used | `A1:H62` |
-| Print area | `'C11A'!$I$4:$Z$88` |
+| Print area | `I4:Z88` |
 | Formula cells | 123, in 15 shapes |
-| Typed number cells | 21 |
+| Typed cells | 21 |
 
-**Typed values** - `B13:H15`. Everything else on the sheet is a formula over these. The cells a reader is meant to edit are shaded; a sheet may also park a constant the engine needs in this range, so go by the shading rather than by the count.
+**Typed values** - `B13:H15`. Everything else is a formula over these. The cells a reader is meant to edit are shaded; a sheet may also park a constant the engine needs in that range, so go by the shading.
 
-**The formulas behind everything else.** Cells that say the same thing about their own position are one row here; the example is the first of them, in ordinary A1.
+**Every formula on the sheet.** Cells that say the same thing about their own position are one row here, with the range they cover and the first of them written out.
 
 | Cells | Named | Example | Formula |
 |---|---|---|---|
@@ -741,36 +1222,43 @@ An axis range that is not round - `0.9` rather than `900` - is the scale block a
 | `B21` | span turnover | `B21` | `=MAX(AGGREGATE(4,6,B17:H17),-AGGREGATE(5,6,B17:H17),0.000000001)` |
 | `B22` | span kEUR | `B22` | `=MAX(AGGREGATE(4,6,B13:H13,B14:H14,B15:H15),-AGGREGATE(5,6,B13:H13,B14:H14,B15:H15),0.000000001)` |
 
-**Chart objects**, in points from the top left of the sheet. The positions are what make separate charts read as one figure, so they are declared rather than dragged.
+**Charts**, in points from the top left of the sheet.
 
-| Name | Left | Top | Width | Height | Series | Axis |
-|---|---|---|---|---|---|---|
-| `tree_roi` | 441.5 | 243.2 | 232 | 302.2 | 1 | -1.005 .. 1.407 |
-| `tree_ros` | 715.5 | 115 | 232 | 244.1 | 1 | -0.804 .. 1.005 |
-| `tree_turnover` | 715.5 | 362.9 | 232 | 308.5 | 1 | -0.3599 .. 1.4397 |
-| `tree_return` | 989.5 | 163 | 232 | 94.1 | 1 | -0.1805 .. 0.2708 |
-| `tree_net_sales` | 989.5 | 266.1 | 232 | 180 | 1 | -0.1805 .. 1.1733 |
-| `tree_capital` | 989.5 | 452.3 | 232 | 171.6 | 1 | -0.1805 .. 1.083 |
+| Name | Type | Left | Top | Width | Height | Series | Axis |
+|---|---|---|---|---|---|---|---|
+| `tree_roi` | Clustered Column | 441.5 | 243.2 | 232 | 302.2 | 1 | -1.005 to 1.407 |
+| `tree_ros` | Clustered Column | 715.5 | 115 | 232 | 244.1 | 1 | -0.804 to 1.005 |
+| `tree_turnover` | Clustered Column | 715.5 | 362.9 | 232 | 308.5 | 1 | -0.3599 to 1.4397 |
+| `tree_return` | Clustered Column | 989.5 | 163 | 232 | 94.1 | 1 | -0.1805 to 0.2708 |
+| `tree_net_sales` | Clustered Column | 989.5 | 266.1 | 232 | 180 | 1 | -0.1805 to 1.1733 |
+| `tree_capital` | Clustered Column | 989.5 | 452.3 | 232 | 171.6 | 1 | -0.1805 to 1.083 |
 
-An axis range that is not round - `0.9` rather than `900` - is the scale block at work: the bounds were divided by the span cell, exactly as the values were. Multiply an axis bound by its span and you get back the range the geometry was measured in.
+| Chart | Series | Fill | Marker | Stem | Labelled |
+|---|---|---|---|---|---|
+| `tree_roi` | `Return on investment` | points 1, 4, 5: solid #404040; points 2-3: solid #7F7F7F; points 6-7: solid #FFFFFF | None | - | yes |
+| `tree_ros` | `Return on sales` | points 1, 4, 5: solid #404040; points 2-3: solid #7F7F7F; points 6-7: solid #FFFFFF | None | - | yes |
+| `tree_turnover` | `Capital turnover` | points 1-5: solid #404040; points 6-7: solid #FFFFFF | None | - | yes |
+| `tree_return` | `Return` | points 1, 4, 5: solid #404040; points 2-3: solid #7F7F7F; points 6-7: solid #FFFFFF | None | - | yes |
+| `tree_net_sales` | `Net sales` | points 1-5: solid #404040; points 6-7: solid #FFFFFF | None | - | yes |
+| `tree_capital` | `Invested capital` | points 1-5: solid #404040; points 6-7: solid #FFFFFF | None | - | yes |
 
 ### C12A
 
 > Compared to 2024, the higher operating expenses (+187 kEUR) were mainly compensated by higher license sales (+183 kEUR), leading to a higher group result (+91 kEUR)
 
-**Tier stack.** One chart per tier, stacked along the page and sharing a category axis. The tiers are separate chart objects positioned to line up, because one chart cannot carry two value axes that both start at zero.
+**A tier stack.**
 
 | | |
 |---|---|
 | Cells used | `A1:AU32` |
-| Print area | `'C12A'!$AV$1:$BS$33` |
-| Hidden engine columns | `AP`, `AU`, `Y` |
+| Print area | `AV1:BS33` |
+| Hidden scale columns | `AP`, `AU`, `Y` |
 | Formula cells | 861, in 46 shapes |
-| Typed number cells | 48 |
+| Typed cells | 48 |
 
-**Typed values** - 48 cells in `B13:D32`. Everything else on the sheet is a formula over these. The cells a reader is meant to edit are shaded; a sheet may also park a constant the engine needs in this range, so go by the shading rather than by the count.
+**Typed values** - 48 cells in `B13:D32`. Everything else is a formula over these. The cells a reader is meant to edit are shaded; a sheet may also park a constant the engine needs in that range, so go by the shading.
 
-**The formulas behind everything else.** Cells that say the same thing about their own position are one row here; the example is the first of them, in ordinary A1.
+**Every formula on the sheet.** Cells that say the same thing about their own position are one row here, with the range they cover and the first of them written out.
 
 | Cells | Named | Example | Formula |
 |---|---|---|---|
@@ -817,33 +1305,50 @@ An axis range that is not round - `0.9` rather than `900` - is the scale block a
 
 *6 further named shapes are not listed - this sheet has 46 in all.*
 
-**Chart objects**, in points from the top left of the sheet. The positions are what make separate charts read as one figure, so they are declared rather than dragged.
+**Charts**, in points from the top left of the sheet.
 
-| Name | Left | Top | Width | Height | Series | Axis |
-|---|---|---|---|---|---|---|
-| `tier_wf_py` | 1177.5 | 86 | 400 | 402 | 3 | 0 .. 1.0556 |
-| `tier_wf_ac` | 1587.5 | 86 | 300 | 402 | 3 | 0 .. 1.0556 |
-| `tier_var_abs` | 1897.5 | 86 | 175 | 402 | 5 | -0.0613 .. 0.4288 |
-| `tier_var_rel` | 2082.5 | 86 | 200 | 402 | 5 | -35 .. 265 |
+| Name | Type | Left | Top | Width | Height | Series | Axis |
+|---|---|---|---|---|---|---|---|
+| `tier_wf_py` | Stacked Bar | 1177.5 | 86 | 400 | 402 | 3 | 0 to 1.0556 |
+| `tier_wf_ac` | Stacked Bar | 1587.5 | 86 | 300 | 402 | 3 | 0 to 1.0556 |
+| `tier_var_abs` | Clustered Bar | 1897.5 | 86 | 175 | 402 | 5 | -0.0613 to 0.4288 |
+| `tier_var_rel` | Clustered Bar | 2082.5 | 86 | 200 | 402 | 5 | -35 to 265 |
 
-An axis range that is not round - `0.9` rather than `900` - is the scale block at work: the bounds were divided by the span cell, exactly as the values were. Multiply an axis bound by its span and you get back the range the geometry was measured in.
+| Chart | Series | Fill | Marker | Stem | Labelled |
+|---|---|---|---|---|---|
+| `tier_wf_py` | `PY base` | no fill | None | - |  |
+| `tier_wf_py` | `PY adds` | solid #7F7F7F | None | - | yes |
+| `tier_wf_py` | `PY subs` | solid #BFBFBF | None | - | yes |
+| `tier_wf_ac` | `AC base` | no fill | None | - |  |
+| `tier_wf_ac` | `AC adds` | solid #404040 | None | - | yes |
+| `tier_wf_ac` | `AC subs` | solid #7F7F7F | None | - | yes |
+| `tier_var_abs` | `ΔPY` | no fill | None | - | yes |
+| `tier_var_abs` | `ΔPY pos good` | solid #8CB400 | None | - |  |
+| `tier_var_abs` | `ΔPY pos bad` | solid #FF0000 | None | - |  |
+| `tier_var_abs` | `ΔPY neg good` | solid #8CB400 | None | - |  |
+| `tier_var_abs` | `ΔPY neg bad` | solid #FF0000 | None | - |  |
+| `tier_var_rel` | `ΔPY%` | no fill | None | - | yes |
+| `tier_var_rel` | `ΔPY% pos good` | solid #8CB400 | None | - |  |
+| `tier_var_rel` | `ΔPY% pos bad` | solid #FF0000 | None | - |  |
+| `tier_var_rel` | `ΔPY% neg good` | solid #8CB400 | None | - |  |
+| `tier_var_rel` | `ΔPY% neg bad` | solid #FF0000 | None | - |  |
 
 ### C13D
 
 > Berlin will further be above overall average in 2027 and 2028, in 2028 its profits will be 293% above location average
 
-**Panel.** A grid of small charts drawn as one native chart object by the `panel-charts` skill, plus a reference panel drawn beside it.
+**A panel grid.**
 
 | | |
 |---|---|
 | Cells used | `A1:BU106` |
-| Print area | `'C13D'!$A$109:$N$148` |
+| Print area | `A109:N148` |
 | Formula cells | 2124, in 101 shapes |
-| Typed number cells | 415 |
+| Typed cells | 415 |
 
-**Typed values** - 415 cells in `B11:BS106`. Everything else on the sheet is a formula over these. The cells a reader is meant to edit are shaded; a sheet may also park a constant the engine needs in this range, so go by the shading rather than by the count.
+**Typed values** - 415 cells in `B11:BS106`. Everything else is a formula over these. The cells a reader is meant to edit are shaded; a sheet may also park a constant the engine needs in that range, so go by the shading.
 
-**The formulas behind everything else.** Cells that say the same thing about their own position are one row here; the example is the first of them, in ordinary A1.
+**Every formula on the sheet.** Cells that say the same thing about their own position are one row here, with the range they cover and the first of them written out.
 
 | Cells | Named | Example | Formula |
 |---|---|---|---|
@@ -892,29 +1397,45 @@ An axis range that is not round - `0.9` rather than `900` - is the scale block a
 
 28 unnamed one-off formulas: `BL53`, `BO53`, `BL54`, `BO54`, `BL55`, `BO55`, `BL56`, `BO56`, `BL57`, `BO57`, `BL58`, `BO58`, ....
 
-**Chart objects**, in points from the top left of the sheet. The positions are what make separate charts read as one figure, so they are declared rather than dragged.
+**Charts**, in points from the top left of the sheet.
 
-| Name | Left | Top | Width | Height | Series | Axis |
-|---|---|---|---|---|---|---|
-| `panel_grid` | 0 | 1637 | 720 | 500 | 14 | 0 .. 4 |
-| `reference_panel` | 549.9 | 2015.8 | 155.1 | 95.9 | 1 | 0 .. 114.743 |
+| Name | Type | Left | Top | Width | Height | Series | Axis |
+|---|---|---|---|---|---|---|---|
+| `panel_grid` | chart type -4111 | 0 | 1637 | 720 | 500 | 14 | 0 to 4 |
+| `reference_panel` | Clustered Column | 549.9 | 2015.8 | 155.1 | 95.9 | 1 | 0 to 114.7433 |
 
-An axis range that is not round - `0.9` rather than `900` - is the scale block at work: the bounds were divided by the span cell, exactly as the values were. Multiply an axis bound by its span and you get back the range the geometry was measured in.
+| Chart | Series | Fill | Marker | Stem | Labelled |
+|---|---|---|---|---|---|
+| `panel_grid` | `ΔØ %` | points 1, 2, 3, 4, 5, 6: head #404040, border #404040; points 14, 15, 27, 28: head #FFFFFF, border #404040 | Square | 1.2pt #8CB400 |  |
+| `panel_grid` | ` ` | points 1, 2, 3, 4, 5, 6: head #404040, border #404040; points 40-41: head #FFFFFF, border #404040 | Square | 1.2pt #FF0000 |  |
+| `panel_grid` | `ΔØ %` | points 1, 2, 3, 4, 5, 6: head #404040, border #404040; points 40-41: head #FFFFFF, border #404040 | Square | 1.2pt #8CB400 |  |
+| `panel_grid` | ` ` | points 1, 2, 3, 4, 5, 6: head #404040, border #404040; points 14, 15, 27, 28, 53, 54: head #FFFFFF, border #404040 | Square | 1.2pt #FF0000 |  |
+| `panel_grid` | `ΔØ %` | points 1, 2, 3, 4, 5, 6: head #404040, border #404040; points 14, 15, 27, 28: head #FFFFFF, border #404040 | Square | 1.2pt #8CB400 |  |
+| `panel_grid` | ` ` | points 1, 2, 3, 4, 5, 6: head #404040, border #404040; points 40, 41, 53, 54: head #FFFFFF, border #404040 | Square | 1.2pt #FF0000 |  |
+| `panel_grid` | `ΔØ %` | points 1-52: head #404040, border #404040; points 53-54: head #FFFFFF, border #404040 | Square | 1.2pt #8CB400 |  |
+| `panel_grid` | ` ` | points 1, 2, 3, 4, 5, 6: head #404040, border #404040; points 14, 15, 27, 28, 40, 41: head #FFFFFF, border #404040 | Square | 1.2pt #FF0000 |  |
+| `panel_grid` | `split` | solid #000000 | None | - |  |
+| `panel_grid` | `divider` | solid #000000 | None | - |  |
+| `panel_grid` | `bandrule` | solid #000000 | None | - |  |
+| `panel_grid` | `baseline` | solid #000000 | None | - |  |
+| `panel_grid` | `ptitle` | solid #000000 | None | - | yes |
+| `panel_grid` | `ytick` | solid #000000 | None | - |  |
+| `reference_panel` | `Series1` | points 1-10: solid #404040; points 11-12: solid #FFFFFF | None | - | yes |
 
 ### T01B
 
-**Table.** A printed grid, with some columns *drawn* instead of printed - the drawn ones are ordinary variance charts sized to the row pitch and positioned against the rows they belong to.
+**A table with drawn columns.**
 
 | | |
 |---|---|
 | Cells used | `A1:O35` |
-| Print area | `'T01B'!$A$9:$O$35` |
+| Print area | `A9:O35` |
 | Formula cells | 190, in 13 shapes |
-| Typed number cells | 104 |
+| Typed cells | 104 |
 
-**Typed values** - 104 cells in `A15:O35`. Everything else on the sheet is a formula over these. The cells a reader is meant to edit are shaded; a sheet may also park a constant the engine needs in this range, so go by the shading rather than by the count.
+**Typed values** - 104 cells in `A15:O35`. Everything else is a formula over these. The cells a reader is meant to edit are shaded; a sheet may also park a constant the engine needs in that range, so go by the shading.
 
-**The formulas behind everything else.** Cells that say the same thing about their own position are one row here; the example is the first of them, in ordinary A1.
+**Every formula on the sheet.** Cells that say the same thing about their own position are one row here, with the range they cover and the first of them written out.
 
 | Cells | Named | Example | Formula |
 |---|---|---|---|
@@ -931,18 +1452,18 @@ An axis range that is not round - `0.9` rather than `900` - is the scale block a
 
 ### T02A
 
-**Table.** A printed grid, with some columns *drawn* instead of printed - the drawn ones are ordinary variance charts sized to the row pitch and positioned against the rows they belong to.
+**A table with drawn columns.**
 
 | | |
 |---|---|
 | Cells used | `A1:AB34` |
-| Print area | `'T02A'!$A$9:$J$35` |
+| Print area | `A9:J35` |
 | Formula cells | 424, in 28 shapes |
-| Typed number cells | 64 |
+| Typed cells | 64 |
 
-**Typed values** - 64 cells in `A15:G32`. Everything else on the sheet is a formula over these. The cells a reader is meant to edit are shaded; a sheet may also park a constant the engine needs in this range, so go by the shading rather than by the count.
+**Typed values** - 64 cells in `A15:G32`. Everything else is a formula over these. The cells a reader is meant to edit are shaded; a sheet may also park a constant the engine needs in that range, so go by the shading.
 
-**The formulas behind everything else.** Cells that say the same thing about their own position are one row here; the example is the first of them, in ordinary A1.
+**Every formula on the sheet.** Cells that say the same thing about their own position are one row here, with the range they cover and the first of them written out.
 
 | Cells | Named | Example | Formula |
 |---|---|---|---|
@@ -972,31 +1493,44 @@ An axis range that is not round - `0.9` rather than `900` - is the scale block a
 
 5 unnamed one-off formulas: `A9`, `A10`, `A11`, `A13`, `F13`.
 
-**Chart objects**, in points from the top left of the sheet. The positions are what make separate charts read as one figure, so they are declared rather than dragged.
+**Charts**, in points from the top left of the sheet.
 
-| Name | Left | Top | Width | Height | Series | Axis |
-|---|---|---|---|---|---|---|
-| `panel_dpl_november` | 113.5 | 205.2 | 96.7 | 303.9 | 3 | -0.7101 .. 0.4769 |
-| `panel_dplp_november` | 206.1 | 205.1 | 186.4 | 303.9 | 3 | -1.5714 .. 1.6286 |
-| `panel_dpl_ytd_november` | 598.6 | 205.1 | 186.4 | 303.9 | 3 | -1.3989 .. 0.975 |
-| `panel_dplp_ytd_november` | 781.1 | 205.1 | 186.4 | 303.9 | 3 | -1.5714 .. 1.6286 |
+| Name | Type | Left | Top | Width | Height | Series | Axis |
+|---|---|---|---|---|---|---|---|
+| `panel_dpl_november` | Clustered Bar | 113.5 | 205.2 | 96.7 | 303.9 | 3 | -0.7101 to 0.4769 |
+| `panel_dplp_november` | Clustered Bar | 206.1 | 205.1 | 186.4 | 303.9 | 3 | -1.5714 to 1.6286 |
+| `panel_dpl_ytd_november` | Clustered Bar | 598.6 | 205.1 | 186.4 | 303.9 | 3 | -1.3989 to 0.975 |
+| `panel_dplp_ytd_november` | Clustered Bar | 781.1 | 205.1 | 186.4 | 303.9 | 3 | -1.5714 to 1.6286 |
 
-An axis range that is not round - `0.9` rather than `900` - is the scale block at work: the bounds were divided by the span cell, exactly as the values were. Multiply an axis bound by its span and you get back the range the geometry was measured in.
+| Chart | Series | Fill | Marker | Stem | Labelled |
+|---|---|---|---|---|---|
+| `panel_dpl_november` | `ΔPL` | no fill | None | - | yes |
+| `panel_dpl_november` | `ΔPL good` | solid #8CB400 | None | - |  |
+| `panel_dpl_november` | `ΔPL bad` | solid #FF0000 | None | - |  |
+| `panel_dplp_november` | `ΔPL%` | no fill | None | - | yes |
+| `panel_dplp_november` | `ΔPL% good` | solid #8CB400 | None | - |  |
+| `panel_dplp_november` | `ΔPL% bad` | solid #FF0000 | None | - |  |
+| `panel_dpl_ytd_november` | `ΔPL` | no fill | None | - | yes |
+| `panel_dpl_ytd_november` | `ΔPL good` | solid #8CB400 | None | - |  |
+| `panel_dpl_ytd_november` | `ΔPL bad` | solid #FF0000 | None | - |  |
+| `panel_dplp_ytd_november` | `ΔPL%` | no fill | None | - | yes |
+| `panel_dplp_ytd_november` | `ΔPL% good` | solid #8CB400 | None | - |  |
+| `panel_dplp_ytd_november` | `ΔPL% bad` | solid #FF0000 | None | - |  |
 
 ### T03A
 
-**Table.** A printed grid, with some columns *drawn* instead of printed - the drawn ones are ordinary variance charts sized to the row pitch and positioned against the rows they belong to.
+**A table with drawn columns.**
 
 | | |
 |---|---|
 | Cells used | `A1:H35` |
-| Print area | `'T03A'!$A$9:$H$35` |
+| Print area | `A9:H35` |
 | Formula cells | 114, in 20 shapes |
-| Typed number cells | 42 |
+| Typed cells | 42 |
 
-**Typed values** - 42 cells in `B15:D34`. Everything else on the sheet is a formula over these. The cells a reader is meant to edit are shaded; a sheet may also park a constant the engine needs in this range, so go by the shading rather than by the count.
+**Typed values** - 42 cells in `B15:D34`. Everything else is a formula over these. The cells a reader is meant to edit are shaded; a sheet may also park a constant the engine needs in that range, so go by the shading.
 
-**The formulas behind everything else.** Cells that say the same thing about their own position are one row here; the example is the first of them, in ordinary A1.
+**Every formula on the sheet.** Cells that say the same thing about their own position are one row here, with the range they cover and the first of them written out.
 
 | Cells | Named | Example | Formula |
 |---|---|---|---|
@@ -1022,18 +1556,18 @@ An axis range that is not round - `0.9` rather than `900` - is the scale block a
 
 ### T04A
 
-**Table.** A printed grid, with some columns *drawn* instead of printed - the drawn ones are ordinary variance charts sized to the row pitch and positioned against the rows they belong to.
+**A table with drawn columns.**
 
 | | |
 |---|---|
 | Cells used | `A1:P35` |
-| Print area | `'T04A'!$A$9:$F$36` |
+| Print area | `A9:F36` |
 | Formula cells | 233, in 31 shapes |
-| Typed number cells | 28 |
+| Typed cells | 28 |
 
-**Typed values** - 28 cells in `B15:C34`. Everything else on the sheet is a formula over these. The cells a reader is meant to edit are shaded; a sheet may also park a constant the engine needs in this range, so go by the shading rather than by the count.
+**Typed values** - 28 cells in `B15:C34`. Everything else is a formula over these. The cells a reader is meant to edit are shaded; a sheet may also park a constant the engine needs in that range, so go by the shading.
 
-**The formulas behind everything else.** Cells that say the same thing about their own position are one row here; the example is the first of them, in ordinary A1.
+**Every formula on the sheet.** Cells that say the same thing about their own position are one row here, with the range they cover and the first of them written out.
 
 | Cells | Named | Example | Formula |
 |---|---|---|---|
@@ -1068,15 +1602,22 @@ An axis range that is not round - `0.9` rather than `900` - is the scale block a
 
 3 unnamed one-off formulas: `A9`, `A10`, `A11`.
 
-**Chart objects**, in points from the top left of the sheet. The positions are what make separate charts read as one figure, so they are declared rather than dragged.
+**Charts**, in points from the top left of the sheet.
 
-| Name | Left | Top | Width | Height | Series | Axis |
-|---|---|---|---|---|---|---|
-| `panel_dpl` | 308.1 | 205.1 | 244.4 | 318.9 | 3 | -1.0288 .. 1.5167 |
-| `panel_dplp` | 548.6 | 205.1 | 244.4 | 318.9 | 3 | -1.1775 .. 1.593 |
+| Name | Type | Left | Top | Width | Height | Series | Axis |
+|---|---|---|---|---|---|---|---|
+| `panel_dpl` | Clustered Bar | 308.1 | 205.1 | 244.4 | 318.9 | 3 | -1.0288 to 1.5167 |
+| `panel_dplp` | Clustered Bar | 548.6 | 205.1 | 244.4 | 318.9 | 3 | -1.1775 to 1.593 |
 
-An axis range that is not round - `0.9` rather than `900` - is the scale block at work: the bounds were divided by the span cell, exactly as the values were. Multiply an axis bound by its span and you get back the range the geometry was measured in.
+| Chart | Series | Fill | Marker | Stem | Labelled |
+|---|---|---|---|---|---|
+| `panel_dpl` | `ΔPL` | no fill | None | - | yes |
+| `panel_dpl` | `ΔPL good` | solid #8CB400 | None | - |  |
+| `panel_dpl` | `ΔPL bad` | solid #FF0000 | None | - |  |
+| `panel_dplp` | `ΔPL%` | no fill | None | - | yes |
+| `panel_dplp` | `ΔPL% good` | solid #8CB400 | None | - |  |
+| `panel_dplp` | `ΔPL% bad` | solid #FF0000 | None | - |  |
 
 ---
 
-*Generated by `ibcs_doc.py` from the workbook itself.*
+*Generated by `ibcs_doc.py` from the workbook itself. Every formula, colour and measurement above was read back out of it.*

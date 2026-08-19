@@ -81,7 +81,9 @@ scripts/ibcs_style.py    semantic constants - ask for "the fill for a forecast"
 scripts/ibcs_layout.py   per-template sheet layout: data zone, chart zone, tiers
 scripts/ibcs_svg.py      SVG renderer (also the geometry reference)
 scripts/ibcs_excel.py    win32com renderer, reproducing the SVG geometry
-scripts/ibcs_doc.py      the manual-build markdown, read back out of the .xlsx
+scripts/ibcs_doc.py      reads a built workbook back: formulas, and how every
+                         chart and every point is actually painted
+scripts/ibcs_guide.py    the by-hand build guide written around those facts
 scripts/test_responsive.py  proves the workbook is still live after an edit
 scripts/test_rescale.py     proves a sheet follows figures 100x larger
 assets/ibcs-palette.json the house palette, with provenance
@@ -184,13 +186,17 @@ The Excel build puts one template on each sheet of a single workbook, behind a
 Read me. Pass a comma-separated list to `--template` for more than one, and
 `--simple` for the base-tier version of each.
 
-**`--doc` writes the manual-build markdown for that exact workbook**, by opening
-the file just written and reading the formulas back out of it. Prefer it over
-describing the construction in prose: a hand-written guide drifts the first time
-a formula changes and nothing catches it, because prose has no tests. `--check`
-runs the other way, asserting that every formula an existing document quotes is
-still at the address it names - which is what stops a shipped markdown going
-stale beside a rebuilt workbook.
+**`--doc` writes the by-hand build guide for that exact workbook** - how to
+build it in Excel with nothing but the menus. Part 1 is the sheet skeleton every
+template shares, Part 2 a worked build per family, Part 3 a per-sheet reference.
+
+It is generated rather than written because every range, formula, hex colour,
+gap width and axis bound in it is **read back out of the file just built** -
+including how each individual *point* is painted, which is where the forecast
+hatch and the pin head's scenario live. A hand-written guide drifts the first
+time a formula changes and nothing catches it, because prose has no tests.
+`--check` runs the other way, asserting that every formula an existing guide
+quotes is still at the address it names.
 
 **Two workbooks ship**, both built from the same code:
 

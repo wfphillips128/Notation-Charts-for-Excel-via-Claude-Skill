@@ -2183,3 +2183,69 @@ C06F simple tier 'wf' is in scale group None but the full layout puts it in
 restatement rather than by transformation, the risk is not a wrong value - it is
 an *absent* one, which reads as a default. Every field so restated wants either
 a transformation that carries it or a check that compares the two.
+
+## The build document became a build guide
+
+The first version of `ibcs_doc.py` was an inventory: every formula on every
+sheet, grouped by shape, with its address. Accurate, checkable, and not what
+anybody needs. The user's verdict was exact - *"nothing equivalent exists to
+help an end user even have a starting point to create something manually"* -
+and the benchmark they pointed at was their own `Vertical waterfall - manual
+steps.md`: which menu item, what to type where, what you should see afterwards,
+and what it looks like when it has gone wrong.
+
+The rewrite keeps the guarantee and changes the genre. It is now in three parts:
+the **sheet skeleton** in seven steps (the title block, the two zones, the data
+columns, splitting a series by meaning, the scale block, text columns, page
+setup); a **worked build per family**, with the tier stack done at full depth -
+insert path, `Ctrl+1`, gap width, overlap, hex fills, the pin's error-bar
+construction, plot-area alignment - and the other six written as *what differs*;
+and a **per-sheet reference** for rebuilding one template rather than learning
+the method.
+
+**What changed technically is that the guide now reads the drawing, not just
+the cells.** `sheet_chart_facts()` walks every chart object while Excel still
+has it open and records chart type, size and position in points, plot-area
+geometry, gap width, overlap, axis bounds, and per series the fill, line,
+marker, error-bar weight and colour - and, crucially, **how each individual
+point is painted**. A guide that says "set the fill to `#404040`" is only worth
+having if that hex came out of the file.
+
+### It found two things the cell formulas could not
+
+**An Excel marker cannot take a pattern fill, and says nothing about it.**
+`apply_scenario()` called `Fill.Patterned(...)` on the pin heads on every build,
+so the forecast months of C03A and C05X were *meant* to be hatched in the
+relative tier. They were not. The call is accepted without error, `Fill.Type`
+reads back as `-2` (mixed), and the head draws exactly as it did before -
+calibrated directly rather than inferred, because a silent no-op is not
+something to guess at. The SVG, which has no such limit, hatches them, so the
+two engines had quietly diverged on a piece of notation the skill's own
+documentation calls load-bearing: *the head is what says whether a relative
+variance was measured or forecast*.
+
+The fix is a **hollow head**: the forecast's own ground colour `#F2F2F2` with a
+`#404040` border. That is not a compromise outside the notation - it is how this
+notation already says "not measured" for plan and budget, and the `panel-charts`
+skill had reached the same answer independently when C13 needed it. The
+divergence from the SVG, which still hatches, is deliberate and is recorded
+rather than hidden.
+
+**A marker series' colours are on the marker, not on the series.** The first
+version of the fact collector read `series.MarkerBackgroundColor` and reported
+`#156082` - Excel's default accent blue - because the pin heads are coloured
+per point and the series-level property was never touched. Reading it put a hex
+in the guide that appears nowhere in the file. Per-point reading fixed it, and
+it is the same lesson as the hatch: on these charts, the series is not where the
+notation lives.
+
+### And one that was only ever a flaky test
+
+`test_rescale.py` intermittently died on `RPC_E_CALL_REJECTED` against the
+seventeen-sheet workbook, and the existing remedy was to restart the whole run
+up to three times - which stopped working. The cause is not flakiness:
+`Application.Calculate()` **returns before the calculation has finished**, and
+the next COM call arrives while Excel is still repainting seventeen sheets of
+charts. Polling `Application.CalculationState` until it reads `xlDone` turns an
+intermittent failure into a short wait. A test that fails once in three runs
+teaches people to re-run it, which is how a real failure gets re-run away.

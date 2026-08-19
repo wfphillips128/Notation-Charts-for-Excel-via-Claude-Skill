@@ -2259,15 +2259,29 @@ SIMPLE_LAYOUTS: dict[str, SheetLayout] = {
         (TierSpec("measure", 0.0, 430.0, (0.0, 240.0), 288.0, 0.0, 110.0,
                   gap_width=20, overlap=76, scale_group="unit"),),
         ("measure",), "measure"),
-    # The bridge alone. C05X's subject is how the plan becomes the forecast,
-    # and the waterfall is the sentence that says it - the monthly columns
-    # above are the evidence, not the claim.
+    # The bridge and the columns it bridges between. Only the relative-variance
+    # tier goes, which makes this the same reduction as C06F.
+    #
+    # The bridge alone was tried first and is wrong, for a reason worth
+    # recording: a C05X bridge tier draws *nothing* on its three total rows -
+    # `2024 AC`, `2025 PL`, `2025 AC+FC` all carry a base and a step of zero,
+    # because in the full sheet the measure tier above supplies those columns
+    # on the shared category axis. Drop the measure tier and the anchors go
+    # with it, leaving twelve steps floating between two labelled but empty
+    # slots. A bridge with nothing at either end is not a simpler bridge; it
+    # is an unreadable one.
+    #
+    # Both tiers keep the geometry they have in the full sheet - 90pt of plot
+    # over a 60-unit range, 300 over 200 - so they stay at the same 1.5pt per
+    # unit and `check_scale` still passes.
     "C05X": _simple(
         C05X,
-        (TierSpec("wf", 0.0, 240.0, (140.0, 200.0), 200.0, 0.0, 8.0,
+        (TierSpec("wf", 0.0, 110.0, (140.0, 200.0), 90.0, 0.0, 8.0,
                   gap_width=60, overlap=100, stacked=True,
-                  scale_group="unit"),),
-        ("wf",), "wf"),
+                  scale_group="unit"),
+         TierSpec("measure", 120.0, 330.0, (0.0, 200.0), 300.0, 0.0, 8.0,
+                  gap_width=40, overlap=76, scale_group="unit")),
+        ("measure", "wf"), "measure"),
     # Bars and their bridge, which is the pairing the template exists to show.
     # Only the relative-variance tier goes.
     "C06F": _simple(
