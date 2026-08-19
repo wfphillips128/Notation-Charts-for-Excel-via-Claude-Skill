@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+
+# Everything the scripts write. Output goes to ./build by default; nothing in
+# it is a source file, and the two workbooks that DO ship live in workbooks/.
+build/
+
+# The IBCS(R) reference renders are the Institute's own images and are not
+# distributed with this project. If you place a copy here it stays out of git.
+template-refs/
+*_compare.png

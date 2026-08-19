@@ -1,0 +1,220 @@
+{
+  "$comment": [
+    "IBCS deliberately prescribes no colour codes. Rule UN 4.1 (v2.0, p52):",
+    "'Although IBCS does not prescribe exact codes for these colors, they should",
+    "still be consistent within an organization.' What the standard binds is the",
+    "SEMANTIC system - solid dark for measured, solid light for earlier measured,",
+    "outlined for fictitious, hatched for expected, and variance colour by impact",
+    "rather than by sign.",
+    "",
+    "Every value below was sampled from the IBCS Institute's own published template",
+    "renderings in template-refs/ using scripts/extract_palette.py. That makes this",
+    "a HOUSE palette that happens to reproduce the originals exactly - not a rule.",
+    "Palettes circulating online (Zebra BI, the Plotly community thread) are other",
+    "houses' choices and are equally valid; do not cite any of them as mandated."
+  ],
+  "meta": {
+    "sampled_from": [
+      "C03_03A.png",
+      "C01_01A.png",
+      "C13_13D.png",
+      "T04_T04A.png",
+      "C09_09C.png"
+    ],
+    "reference_render_size": [
+      1280,
+      720
+    ],
+    "sampled_on": "2026-08-17"
+  },
+  "scenario": {
+    "$comment": "UN 3.2. Fill encodes how the number came to exist, not what it measures.",
+    "AC": {
+      "role": "actual / measured",
+      "fill": "#404040",
+      "outline": null,
+      "hatch": null,
+      "note": "C03_03A renders this as #3C3C3C; the other four references and both 2026-dated renders use #404040, so #404040 is the house value. The 4/255 difference is not perceptible."
+    },
+    "PY": {
+      "role": "previous year / earlier measured",
+      "fill": "#A6A6A6",
+      "outline": null,
+      "hatch": null
+    },
+    "PL": {
+      "role": "plan / fictitious",
+      "fill": "#FFFFFF",
+      "outline": "#404040",
+      "hatch": null,
+      "note": "Read as 'outlined, no fill', and the body really is white: sampled from the PL bars of C04_04A, whose interior is #FFFFFF. This was #F2F2F2 on the reasoning that a true white body reads as a hole where series overlap, but that reasoning was not measured - C04_04A draws PL directly over AC in white and the outline is what delimits it. C06_06F and T04_T04A contain no #F2F2F2 at all. FC keeps #F2F2F2, which is its hatch background and is measured."
+    },
+    "BU": {
+      "role": "budget / fictitious",
+      "fill": "#FFFFFF",
+      "outline": "#404040",
+      "hatch": null,
+      "note": "Notated identically to PL. Which of PL or BU is in play is carried by the axis label and the title block, not by the fill."
+    },
+    "FC": {
+      "role": "forecast / expected",
+      "fill": "#F2F2F2",
+      "outline": "#404040",
+      "hatch": {
+        "colour": "#404040",
+        "angle_deg": 45,
+        "direction": "ascending",
+        "pitch_px": 8,
+        "stroke_px": 3,
+        "measured_at_width": 1280
+      },
+      "note": "Stripes ascend left-to-right ('/'). Measured on the Oct-Dec columns of C03_03A: dark runs of 3px on an 8px pitch, phase shifting 1px left per row down, which is 45 degrees exactly."
+    }
+  },
+  "waterfall": {
+    "$comment": [
+      "A waterfall needs TWO shades per scenario, not one: a line that adds to the",
+      "running total and a line that subtracts from it must be told apart, and the",
+      "panel header is what says which scenario the whole panel is. So each panel",
+      "takes a two-step slice of the structure ramp rather than the single scenario",
+      "fill. Measured off C12_12A-1.png, which draws its PY panel at #7F7F7F rather",
+      "than the house PY of #A6A6A6 - one ramp step darker, to leave room for its",
+      "own deduction shade beneath it. Read that as what a waterfall needs, not as",
+      "a contradiction of the PY fill: C06_06F and T04_T04A, which have no deduction",
+      "shade to accommodate, both use #A6A6A6."
+    ],
+    "AC": {
+      "adds": "#404040",
+      "subtracts": "#7F7F7F"
+    },
+    "PY": {
+      "adds": "#7F7F7F",
+      "subtracts": "#BFBFBF"
+    },
+    "FC": {
+      "adds": "#BFBFBF",
+      "subtracts": "#7F7F7F",
+      "note": "Measured off C08_08H, whose forecast quarter draws a lighter increase over a darker decrease under the 45-degree hatch. The hatch is what says forecast; these two say which way the movement went."
+    },
+    "PL": {
+      "adds": "#F4F4F4",
+      "subtracts": "#D9D9D9",
+      "note": "Measured off C08_08H's planned quarters. Both are near white because a plan is outlined; the outline delimits them and the two steps keep an increase and a decrease apart within one panel."
+    },
+    "BU": {
+      "adds": "#F4F4F4",
+      "subtracts": "#D9D9D9",
+      "note": "Identical to PL, as BU is everywhere else in this palette. Which of the two is in play is carried by the axis label and the title block, never by the fill - so a statement walked against budget is drawn exactly like one walked against plan."
+    },
+    "connector": "#7F7F7F",
+    "connector_note": "The lines carrying the running level from one bar to the next. One grey in both panels, not the panel's own fill: measured at #7F7F7F in the PY and the AC panel alike.",
+    "measured_from": "C12_12A-1.png, C08_08H"
+  },
+  "bubble": {
+    "$comment": [
+      "A bubble is a filled AREA, not a bar, and the same greys do not survive the",
+      "change. Measured off C10_10D: the actual is the house AC #404040 drawn at 80%",
+      "opacity, and the prior year is #D9D9D9 rather than the house PY #A6A6A6.",
+      "",
+      "Both departures are load-bearing. The opacity is not decoration: the bubbles",
+      "overlap on most of the page, and an opaque actual would hide the prior year it",
+      "is meant to be compared with - VBR's prior-year label reads straight through",
+      "its actual in the reference. The lighter prior year is the large-area rule the",
+      "area charts already follow (C08H fills an actual area at #D9D9D9 too): a mark",
+      "forty times the size of a bar carries forty times the visual weight at the",
+      "same fill, and the pair stops reading as one behind the other.",
+      "",
+      "Read these as area-specific values of the same semantic system, not as a",
+      "second scenario palette. Solid dark is still the actual and solid light is",
+      "still the prior year; only the tone changes with the size of the mark."
+    ],
+    "PY": {
+      "fill": "#D9D9D9",
+      "opacity": 1.0
+    },
+    "AC": {
+      "fill": "#404040",
+      "opacity": 0.8
+    },
+    "measured_from": "C10_10D.png"
+  },
+  "variance": {
+    "$comment": "Colour encodes IMPACT, not arithmetic sign. A cost overrun is red even though the number is positive.",
+    "good": "#8CB400",
+    "bad": "#FF0000",
+    "neutral": "#0064FF",
+    "greyscale_fallback": {
+      "good": "#BFBFBF",
+      "bad": "#404040",
+      "neutral": "#808080"
+    },
+    "colour_deficient_substitute": {
+      "good": "#00A0A0",
+      "$comment": "IBCS suggests shifting desirable variances towards blue-green where red/green confusion matters. Not sampled - no reference render uses it."
+    }
+  },
+  "axis": {
+    "$comment": "The variance axis carries the REFERENCE scenario, which is why a variance tier needs no legend.",
+    "reference_PY": {
+      "style": "solid",
+      "colour": "#808080",
+      "weight_px": 5,
+      "note": "Solid light, matching the PY fill family. Measured on the dPY tier of C03_03A."
+    },
+    "reference_PL": {
+      "style": "double-rule",
+      "colour": "#000000",
+      "weight_px": 1,
+      "gap_px": 3,
+      "note": "Two thin parallel lines, i.e. an outline seen edge-on, matching the PL 'outlined' fill. Measured on the dPL tier of T04_T04A."
+    },
+    "category": {
+      "colour": "#000000",
+      "weight_px": 1
+    },
+    "gridline": {
+      "colour": "#D9D9D9",
+      "weight_px": 1
+    }
+  },
+  "structure": {
+    "$comment": "Grey ramp for stacked segments and other CATEGORY breakdowns. Categories are not scenarios - this ramp must never be read as scenario notation. Sampled from the C01_01A business-area stack.",
+    "ramp": [
+      "#404040",
+      "#595959",
+      "#7F7F7F",
+      "#A6A6A6",
+      "#BFBFBF",
+      "#D9D9D9"
+    ],
+    "accent": {
+      "$comment": "Where grey alone cannot separate overlapping categories - scatter and bubble charts. Sampled from the C09_09C product lines.",
+      "ramp": [
+        "#404040",
+        "#FF6600",
+        "#FFCE59",
+        "#0064FF",
+        "#00A0A0"
+      ]
+    }
+  },
+  "annotation": {
+    "$comment": "Highlighting is deliberately a different channel from scenario and variance, so it can never be confused with data.",
+    "highlight": "#0064FF",
+    "highlight_pale": "#CBE0FF",
+    "emphasis_band": "#F2F2F2",
+    "panel_background": "#ECECEC",
+    "note": "#0064FF draws highlight ovals, comment reference circles, outlier arrows and leader lines. #CBE0FF fills reference bands such as the indexed-to-100 band in C03_03A."
+  },
+  "text": {
+    "primary": "#000000",
+    "secondary": "#7F7F7F",
+    "badge": "#8CB400",
+    "note": "The title block runs primary for the measure name, secondary for the unit and period. The template badge in the top-right of every reference render uses the variance green."
+  },
+  "page": {
+    "background": "#FFFFFF",
+    "rule": "#7F7F7F",
+    "footnote": "#7F7F7F"
+  }
+}
