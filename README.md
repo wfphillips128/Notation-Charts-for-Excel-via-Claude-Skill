@@ -28,8 +28,9 @@ captions, its variance colours and its axes all follow.
 
 | | |
 |---|---|
-| [`ibcs/`](ibcs/) | The skill: one data layer, two renderers, and the reasoning behind every choice |
-| [`workbooks/`](workbooks/) | Two finished `.xlsx` files and a generated build document for each |
+| [`ibcs-excel-charts/`](ibcs-excel-charts/) | The skill: one data layer, two renderers, and the reasoning behind every choice |
+| [`workbooks/`](workbooks/) | Two finished `.xlsx` files |
+| [`guides/`](guides/) | How to build each of them by hand in Excel |
 
 ### The workbooks
 
@@ -41,10 +42,16 @@ captions, its variance colours and its axes all follow.
 Each opens on a **Read me**, then one sheet per template in template-id order.
 Every sheet prints on **one page**.
 
-Beside each workbook is a `.md` of the same name. That document is **generated
-from the workbook** — it opens the `.xlsx` and reads the formulas back out of
-it, so it cannot describe a formula the file does not contain. It is the manual
-build: what to type, where, and which of it is a trap.
+In [`guides/`](guides/) is an **Excel Guide** for each — how to build that workbook by hand
+in Excel, with nothing but the menus. Part 1 is the sheet skeleton every template
+shares, Part 2 a worked build per chart family, Part 3 a per-sheet reference.
+
+Those guides are **generated from the workbooks**. Every range, formula, hex
+colour, gap width and axis bound in them was read back out of the `.xlsx` after
+it was written — including how each individual *point* is painted, which is
+where the forecast hatch and a pin head's scenario live. A guide that tells you
+to set a fill to `#404040` is only worth having if that value came out of the
+file.
 
 ---
 
@@ -123,7 +130,7 @@ into your skills directory and restart Claude Code:
 
 ```bash
 git clone https://github.com/wfphillips128/Notation-Charts-for-Excel-via-Claude-Skill.git
-cp -r Notation-Charts-for-Excel-via-Claude-Skill/ibcs ~/.claude/skills/
+cp -r Notation-Charts-for-Excel-via-Claude-Skill/ibcs-excel-charts ~/.claude/skills/
 ```
 
 On Windows the destination is `%USERPROFILE%\.claude\skills\`.
@@ -140,17 +147,17 @@ workbooks are ordinary workbooks.
 cd wherever-you-want-the-output
 
 # One template to SVG - no dependencies beyond Python
-python .../ibcs/scripts/ibcs_svg.py --template C04A
+python .../ibcs-excel-charts/scripts/ibcs_svg.py --template C04A
 
 # The Excel workbook, and the build document read back out of it
-python .../ibcs/scripts/ibcs_excel.py --template C03A,C04A \
-    --out book.xlsx --doc book.md
+python .../ibcs-excel-charts/scripts/ibcs_excel.py --template C03A,C04A \
+    --out book.xlsx --doc "book - Excel Guide.md"
 
 # The gates
-python .../ibcs/scripts/ibcs_data.py          # 127 tie-outs
-python .../ibcs/scripts/test_responsive.py    # the workbook is still live
-python .../ibcs/scripts/test_rescale.py       # it follows other numbers
-python .../ibcs/scripts/ibcs_doc.py --xlsx book.xlsx --out book.md --check
+python .../ibcs-excel-charts/scripts/ibcs_data.py          # 127 tie-outs
+python .../ibcs-excel-charts/scripts/test_responsive.py    # the workbook is still live
+python .../ibcs-excel-charts/scripts/test_rescale.py       # it follows other numbers
+python .../ibcs-excel-charts/scripts/ibcs_doc.py --xlsx book.xlsx --check
 ```
 
 Output goes to `./build` by default — the current directory, not next to the

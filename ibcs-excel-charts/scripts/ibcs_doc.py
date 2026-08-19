@@ -564,12 +564,27 @@ def write_doc(xlsx_path, out_path, chart_facts=None, simple=False):
     return out_path
 
 
+def guide_name(xlsx: Path) -> Path:
+    """The guide's file name for a given workbook.
+
+    `IBCS Charts - Complex Versions.xlsx` becomes `IBCS Charts - Excel Guide
+    for Complex Versions.md`, so the two sort together in a folder listing and
+    the name says what the file is rather than only what it is about. A
+    workbook whose name has no " - " in it just gets " - Excel Guide" added.
+    """
+    stem = xlsx.stem
+    head, sep, tail = stem.rpartition(" - ")
+    name = ("%s - Excel Guide for %s" % (head, tail)) if sep         else ("%s - Excel Guide" % stem)
+    return xlsx.with_name(name + ".md")
+
+
 def main(argv=None):
     sys.stdout.reconfigure(encoding="utf-8")
     ap = argparse.ArgumentParser(description=__doc__.split(NL)[0])
     ap.add_argument("--xlsx", required=True, type=Path)
     ap.add_argument("--out", type=Path,
-                    help="default: the workbook's name with a .md suffix")
+                    help="default: the workbook's name with 'Excel Guide for' "
+                         "in it - see guide_name()")
     ap.add_argument("--simple", action="store_true")
     ap.add_argument("--no-charts", action="store_true",
                     help="skip whatever needs Excel to read back")
@@ -577,7 +592,7 @@ def main(argv=None):
                     help="do not write; verify that every formula the existing "
                          "guide quotes is still in the workbook")
     a = ap.parse_args(argv)
-    out = a.out or a.xlsx.with_suffix(".md")
+    out = a.out or guide_name(a.xlsx)
     if a.check:
         problems = check_doc(out, a.xlsx)
         for problem in problems:

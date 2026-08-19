@@ -1,5 +1,5 @@
 ---
-name: ibcs
+name: ibcs-excel-charts
 description: Build charts and tables in IBCS® notation (International Business Communication Standards) - the "what means the same must look the same" standard behind scenario notation (AC/PY/PL/BU/FC), variance tiers, message-driven titles, and the 17 IBCS® templates. Produces Excel charts via win32com and self-contained SVG from one shared data layer. Use when the user mentions IBCS, SUCCESS rules, scenario notation, variance charts with pins, multi-tier charts, "what means the same must look the same", Hichert, Zebra BI-style reporting, or asks for a management report chart that follows a formal notation standard.
 ---
 
@@ -176,10 +176,10 @@ python scripts/ibcs_svg.py --template C04A         # render - always before
                                                    # reads the file, it does not
                                                    # call the renderer
 python scripts/compare_render.py C04A              # diff against the IBCS® original
-python scripts/ibcs_excel.py --template C03A,C04A --out book.xlsx --doc book.md
+python scripts/ibcs_excel.py --template C03A,C04A --out book.xlsx        --doc "book - Excel Guide.md"
 python scripts/test_responsive.py                  # prove the workbook is still live
 python scripts/test_rescale.py                     # prove it follows other numbers
-python scripts/ibcs_doc.py --xlsx book.xlsx --out book.md --check
+python scripts/ibcs_doc.py --xlsx book.xlsx --check      # the guide agrees
 ```
 
 The Excel build puts one template on each sheet of a single workbook, behind a
@@ -203,6 +203,8 @@ quotes is still at the address it names.
 | File | What it holds |
 |---|---|
 | `IBCS Charts - Complex Versions.xlsx` | all 17 templates with every tier |
+| `IBCS Charts - Excel Guide for Complex Versions.md` | how to build that workbook by hand |
+| `IBCS Charts - Excel Guide for Simple Variants Only.md` | the same, for the simple one |
 | `IBCS Charts - Simple Variants Only.xlsx` | the seven templates with a useful base-tier form - C01A, C02A, C03A, C04A, C05X, C06F, C12A - drawn with that tier only. A scattergram has no tiers to drop, a line chart's tiers are all measures, and a table reduced to one column block is a list rather than a report |
 
 Each has a **Read me** sheet first, then one sheet per template in template-id
