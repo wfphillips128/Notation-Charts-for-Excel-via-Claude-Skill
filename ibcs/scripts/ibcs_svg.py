@@ -4697,6 +4697,10 @@ def check_registries() -> list[str]:
                        if t[:3] not in D._CHECKS and not t.startswith("C03"))
     if unchecked:
         problems.append(f"no tie-out function for {unchecked}")
+
+    # Simple layouts restate every per-tier fact, and a missing one fails
+    # silently rather than loudly - see check_simple_layouts.
+    problems.extend(L.check_simple_layouts())
     return problems
 
 

@@ -2112,3 +2112,74 @@ Both started as sentences that read well and were wrong.
   from its family rather than describing the majority and hoping.
 - **A first-letter test for "starts in column A"** matched `AD1`. Column letters
   have to be parsed, not sampled.
+
+## The simple workbook's bars had collapsed, and every check passed
+
+Found by the user on review, in the four sheets `C04A`, `C05X`, `C06F` and
+`C12A`: the labels, the axis and the category names were all correct, and the
+bars were drawn at a fraction of a pixel.
+
+**The cause is one missing field.** A simple layout redeclares its tiers from
+scratch rather than filtering the full ones - which is right, because a
+base-tier sheet gets its own geometry - but that means every per-tier fact has
+to be restated, and `scale_group` was restated for `C03A` only. C03A was the
+pilot when the scale block went in; the other four were added to `LAYOUTS` and
+never to `SIMPLE_LAYOUTS`.
+
+**Why it failed silently, and this is the part worth keeping.** The scaled
+columns are written by the *column* declarations, which the simple layout
+inherits unchanged, so the values reaching the chart were divided by the span
+cell exactly as intended. The axis bounds come from the *tier*, and
+`_scaled_bounds()` returns the declared bounds untouched when a tier has no
+scale group. So the sheet plotted values around 1.0 against an axis running to
+240, or to 2,200, or to 1,120.
+
+Nothing raised. The build's own `verify()` checks tier alignment and zone
+separation, and both were fine - the charts were in exactly the right places,
+drawing almost nothing. Page setup was fine. The generated document was fine;
+it quotes cell formulas, and the cell formulas were correct. Only a human
+looking at the picture, or a check that multiplies an axis bound by its span,
+could see it.
+
+### Why the gate did not run
+
+`test_rescale.py` is precisely the check that would have caught this - its first
+assertion is `axis bound x span == the declared bound` - and it could not be
+pointed at the simple workbook at all. It read tiers from `L.LAYOUTS`, so on a
+sheet with one tier instead of three it asked Excel for a chart object that does
+not exist and died on a COM error. The same was true of the structure check,
+which asked for three panels where the simple `C01A` draws one.
+
+A gate that cannot open a file is not a gate that passes on it. Three changes:
+
+- `is_simple_book(wb)` asks the **Read me sheet** whether this is the base-tier
+  workbook, rather than trusting the file name - a copy renamed for review is
+  still the same workbook;
+- tier and structure checks read what the sheet actually holds (`layout_for`,
+  and the panel list taken from the sheet's chart objects), and print how many
+  of the expected panels were drawn rather than silently checking fewer;
+- families absent from a workbook print `not in this workbook`, never a pass.
+
+Run against the pre-fix file it reports nine failures across exactly the four
+sheets the user named, and nothing on `C03A` or the structure sheets - which is
+the proof that the fix and the gate describe the same defect.
+
+### And a check so the field cannot go missing again
+
+`check_simple_layouts()` in `ibcs_layout.py` asserts that every simple tier sits
+in the same scale group as its full twin. It lives in the layout module rather
+than in a renderer because it is a fact about the registries, and **both**
+renderers call it - `check_registries()` in the SVG path, and `build()` in the
+Excel path, which is where the defect actually lived and which had never run a
+registry check at all. Made to fail first by putting `C06F`'s `wf` tier back the
+way it was:
+
+```
+C06F simple tier 'wf' is in scale group None but the full layout puts it in
+'unit'; the axis bounds and the values would be divided by different things
+```
+
+**The general lesson.** Where one structure is derived from another by
+restatement rather than by transformation, the risk is not a wrong value - it is
+an *absent* one, which reads as a default. Every field so restated wants either
+a transformation that carries it or a check that compares the two.

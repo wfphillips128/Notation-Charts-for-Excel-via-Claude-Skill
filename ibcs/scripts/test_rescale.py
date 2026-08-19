@@ -139,11 +139,41 @@ def _tier_plotted(chart, spec, template, lo: float):
     return rows
 
 
-def check_tier_sheets(wb, excel, names) -> list[str]:
+def is_simple_book(wb) -> bool:
+    """Whether this workbook is the base-tier one, asked of the file itself.
+
+    The Read me says so in as many words, which is a better witness than the
+    file name: a copy renamed for review is still the same workbook.
+    """
+    try:
+        sheet = wb.Sheets("Read me")
+    except Exception:                                         # noqa: BLE001
+        return False
+    for row in range(1, 40):
+        value = sheet.Cells(row, 1).Value
+        if isinstance(value, str) and "This is the simple workbook" in value:
+            return True
+    return False
+
+
+def layout_for(name: str, simple: bool):
+    """The layout this workbook actually drew the sheet with.
+
+    A simple sheet has its own tiers - fewer of them, with their own geometry -
+    so checking it against the full layout asks for charts that are not there.
+    That is exactly how a simple-workbook defect survived: the gate could not
+    be pointed at the file that had it.
+    """
+    if simple and L.is_simple(name):
+        return L.simple_layout_for(name)
+    return L.LAYOUTS[name]
+
+
+def check_tier_sheets(wb, excel, names, simple: bool = False) -> list[str]:
     failures: list[str] = []
     for name in names:
         sheet = wb.Sheets(name)
-        layout, t = L.LAYOUTS[name], D.TEMPLATES[name]
+        layout, t = layout_for(name, simple), D.TEMPLATES[name]
 
         for spec in layout.tiers:
             if not spec.scale_group:
@@ -275,10 +305,22 @@ def check_structure_sheets(wb, excel, names) -> list[str]:
         maximum = math.ceil(tallest / layout.scale_step) * layout.scale_step
         span = _span_labelled(sheet, "span")
 
+        # The simple workbook draws fewer panels than the template describes,
+        # so the panels are taken from the SHEET. Asking for one that is not
+        # there used to raise out of the whole run, which is how a workbook
+        # this gate could not open kept a defect.
+        drawn = {sheet.ChartObjects(i).Name
+                 for i in range(1, sheet.ChartObjects().Count + 1)}
+        panels = [p for p in t.structure_panels
+                  if f"panel_{p.key}" in drawn]
+        if len(panels) != len(t.structure_panels):
+            print(f"    {name}: {len(panels)} of "
+                  f"{len(t.structure_panels)} panels drawn on this sheet")
+
         tops = [(panel.key,
                  sheet.ChartObjects(f"panel_{panel.key}")
                  .Chart.Axes(XL_VALUE).MaximumScale)
-                for panel in t.structure_panels]
+                for panel in panels]
         for key, top in tops:
             if abs(top * span - maximum) > 5e-6:
                 failures.append(
@@ -296,7 +338,7 @@ def check_structure_sheets(wb, excel, names) -> list[str]:
             cell.Value = cell.Value * FACTOR
         excel.Calculate()
 
-        for panel in t.structure_panels:
+        for panel in panels:
             chart = sheet.ChartObjects(f"panel_{panel.key}").Chart
             top = chart.Axes(XL_VALUE).MaximumScale
             for i in range(1, chart.SeriesCollection().Count + 1):
@@ -381,13 +423,24 @@ def _run_once(book: Path) -> int:
         shutil.copyfile(book, work)
         wb = excel.Workbooks.Open(work)
         try:
+            simple = is_simple_book(wb)
+            present = {sheet.Name for sheet in wb.Sheets}
+            print(f"  {'simple' if simple else 'complex'} workbook, "
+                  f"{len(present) - 1} template sheets")
             for title, fn, names in (
                     ("tier stack", check_tier_sheets,
                      ["C03A", "C04A", "C05X", "C06F", "C12A"]),
                     ("tables", check_table_sheets, ["T02A", "T04A"]),
                     ("structure", check_structure_sheets, ["C01A", "C02A"]),
                     ("lines", check_line_sheets, ["C07C", "C08H"])):
-                found = fn(wb, excel, names)
+                # Only what this workbook holds. Naming a sheet that is not
+                # there must read as "not in this book", never as a pass.
+                names = [n for n in names if n in present]
+                if not names:
+                    print(f"  {title:<12} {'-':<28} not in this workbook")
+                    continue
+                found = (fn(wb, excel, names, simple)
+                         if fn is check_tier_sheets else fn(wb, excel, names))
                 print(f"  {title:<12} {', '.join(names):<28} "
                       f"{'clean' if not found else str(len(found)) + ' problem(s)'}")
                 failures.extend(found)

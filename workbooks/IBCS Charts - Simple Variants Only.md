@@ -362,7 +362,7 @@ An axis range that is not round - `0.9` rather than `900` - is the scale block a
 
 | Name | Left | Top | Width | Height | Series | Axis |
 |---|---|---|---|---|---|---|
-| `tier_measure` | 631.5 | 86 | 430 | 400 | 2 | 0 .. 240 |
+| `tier_measure` | 631.5 | 86 | 430 | 400 | 2 | 0 .. 1.0959 |
 
 An axis range that is not round - `0.9` rather than `900` - is the scale block at work: the bounds were divided by the span cell, exactly as the values were. Multiply an axis bound by its span and you get back the range the geometry was measured in.
 
@@ -433,7 +433,7 @@ An axis range that is not round - `0.9` rather than `900` - is the scale block a
 
 | Name | Left | Top | Width | Height | Series | Axis |
 |---|---|---|---|---|---|---|
-| `tier_wf` | 1038.5 | 86 | 620 | 240 | 5 | 140 .. 200 |
+| `tier_wf` | 1038.5 | 86 | 620 | 240 | 5 | 0.8046 .. 1.1494 |
 
 An axis range that is not round - `0.9` rather than `900` - is the scale block at work: the bounds were divided by the span cell, exactly as the values were. Multiply an axis bound by its span and you get back the range the geometry was measured in.
 
@@ -504,8 +504,8 @@ An axis range that is not round - `0.9` rather than `900` - is the scale block a
 
 | Name | Left | Top | Width | Height | Series | Axis |
 |---|---|---|---|---|---|---|
-| `tier_measure` | 970.5 | 86 | 560 | 430 | 5 | 0 .. 2200 |
-| `tier_wf` | 1540.5 | 86 | 140 | 430 | 3 | 1600 .. 2200 |
+| `tier_measure` | 970.5 | 86 | 560 | 430 | 5 | 0 .. 1.0255 |
+| `tier_wf` | 1540.5 | 86 | 140 | 430 | 3 | 0.7458 .. 1.0255 |
 
 An axis range that is not round - `0.9` rather than `900` - is the scale block at work: the bounds were divided by the span cell, exactly as the values were. Multiply an axis bound by its span and you get back the range the geometry was measured in.
 
@@ -576,7 +576,7 @@ An axis range that is not round - `0.9` rather than `900` - is the scale block a
 
 | Name | Left | Top | Width | Height | Series | Axis |
 |---|---|---|---|---|---|---|
-| `tier_wf_ac` | 1177.5 | 86 | 400 | 402 | 3 | 0 .. 1120 |
+| `tier_wf_ac` | 1177.5 | 86 | 400 | 402 | 3 | 0 .. 1.0556 |
 
 An axis range that is not round - `0.9` rather than `900` - is the scale block at work: the bounds were divided by the span cell, exactly as the values were. Multiply an axis bound by its span and you get back the range the geometry was measured in.
 

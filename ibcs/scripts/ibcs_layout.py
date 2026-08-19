@@ -2257,7 +2257,7 @@ SIMPLE_LAYOUTS: dict[str, SheetLayout] = {
     "C04A": _simple(
         C04A,
         (TierSpec("measure", 0.0, 430.0, (0.0, 240.0), 288.0, 0.0, 110.0,
-                  gap_width=20, overlap=76),),
+                  gap_width=20, overlap=76, scale_group="unit"),),
         ("measure",), "measure"),
     # The bridge alone. C05X's subject is how the plan becomes the forecast,
     # and the waterfall is the sentence that says it - the monthly columns
@@ -2265,23 +2265,26 @@ SIMPLE_LAYOUTS: dict[str, SheetLayout] = {
     "C05X": _simple(
         C05X,
         (TierSpec("wf", 0.0, 240.0, (140.0, 200.0), 200.0, 0.0, 8.0,
-                  gap_width=60, overlap=100, stacked=True),),
+                  gap_width=60, overlap=100, stacked=True,
+                  scale_group="unit"),),
         ("wf",), "wf"),
     # Bars and their bridge, which is the pairing the template exists to show.
     # Only the relative-variance tier goes.
     "C06F": _simple(
         C06F,
         (TierSpec("measure", 0.0, 560.0, (0.0, 2200.0), 440.0, 0.0, 110.0,
-                  gap_width=40, overlap=100, stacked=True),
+                  gap_width=40, overlap=100, stacked=True,
+                  scale_group="unit"),
          TierSpec("wf", 570.0, 140.0, (1600.0, 2200.0), 120.0, 0.0, 10.0,
-                  gap_width=40, overlap=100, stacked=True)),
+                  gap_width=40, overlap=100, stacked=True,
+                  scale_group="unit")),
         ("measure", "wf"), "measure"),
     # One waterfall. The actual rather than the prior year, because a statement
     # a reader is meeting for the first time should be this year's.
     "C12A": _simple(
         C12A,
         (TierSpec("wf_ac", 0.0, 400.0, (0.0, 1120.0), 280.0, 0.0, 110.0,
-                  gap_width=30, overlap=100),),
+                  gap_width=30, overlap=100, scale_group="unit"),),
         ("wf_ac",), "wf_ac"),
 }
 
@@ -2290,6 +2293,38 @@ SIMPLE_LAYOUTS: dict[str, SheetLayout] = {
 #: a line chart's tiers are all measures, and a table reduced to one column
 #: block is a list rather than a report.
 SIMPLE_TEMPLATES = ("C01A", "C02A", "C03A", "C04A", "C05X", "C06F", "C12A")
+
+
+def check_simple_layouts() -> list[str]:
+    """Every simple tier must sit in the same scale group as its full twin.
+
+    A simple layout redeclares its tiers from scratch rather than filtering the
+    full ones, which is right - it gives them their own geometry - but it means
+    every per-tier fact has to be restated, and a fact that is *missing* rather
+    than wrong fails silently. ``scale_group`` is the one that bites. Without
+    it the values are still divided by the span cell, because the scaled
+    columns are on the sheet either way, while the axis bounds are not - so
+    every bar collapses to a fraction of its length, and the sheet still
+    builds, still verifies its tier alignment, and still prints on one page.
+
+    Lives here rather than in a renderer because it is a fact about the
+    registries, and both renderers have to be able to ask.
+    """
+    problems: list[str] = []
+    for tid, simple in sorted(SIMPLE_LAYOUTS.items()):
+        full = {t.key: t for t in LAYOUTS[tid].tiers}
+        for tier in simple.tiers:
+            twin = full.get(tier.key)
+            if twin is None:
+                problems.append(f"{tid} simple tier {tier.key!r} has no "
+                                f"counterpart in the full layout")
+            elif tier.scale_group != twin.scale_group:
+                problems.append(
+                    f"{tid} simple tier {tier.key!r} is in scale group "
+                    f"{tier.scale_group!r} but the full layout puts it in "
+                    f"{twin.scale_group!r}; the axis bounds and the values "
+                    f"would be divided by different things")
+    return problems
 
 
 def is_simple(template_id: str) -> bool:

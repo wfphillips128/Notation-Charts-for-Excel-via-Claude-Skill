@@ -5355,6 +5355,16 @@ def build(templates: list[D.Template], out: Path, keep_open: bool = False,
     for template in templates:
         D.check_ties(template)                # nothing is built on a broken tie
 
+    # Nor on a layout registry that has drifted. This one is cheap, needs no
+    # Excel, and guards the failure that produced a workbook whose bars had
+    # collapsed to a fraction of their length while every other check passed.
+    drift = L.check_simple_layouts()
+    if drift:
+        print("error: layout registries out of step:", file=sys.stderr)
+        for problem in drift:
+            print(f"  {problem}", file=sys.stderr)
+        return 1
+
     excel = win32.Dispatch("Excel.Application")
     excel.Visible = bool(keep_open)
     excel.DisplayAlerts = False
