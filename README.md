@@ -1,4 +1,4 @@
-# Excel notation charts
+# Notation charts for Excel
 
 Management-report charts and tables in **IBCS® notation**, built as native Excel
 chart objects with live formulas — and as self-contained SVG — from one shared
@@ -122,8 +122,8 @@ This is a [Claude Code](https://claude.com/claude-code) skill. Copy the folder
 into your skills directory and restart Claude Code:
 
 ```bash
-git clone https://github.com/wfphillips128/excel-notation-charts.git
-cp -r excel-notation-charts/ibcs ~/.claude/skills/          # macOS / Linux
+git clone https://github.com/wfphillips128/Notation-Charts-for-Excel-via-Claude-Skill.git
+cp -r Notation-Charts-for-Excel-via-Claude-Skill/ibcs ~/.claude/skills/
 ```
 
 On Windows the destination is `%USERPROFILE%\.claude\skills\`.
