@@ -46,6 +46,7 @@ import argparse
 import dataclasses as dc
 import shutil
 import math
+import traceback
 import sys
 import tempfile
 from pathlib import Path
@@ -124,11 +125,42 @@ XL_PORTRAIT = 1
 XL_LANDSCAPE = 2
 MSO_COMMENT = 4
 XL_BOTTOM = -4107
+XL_TOP = -4160
+XL_UP = -4162          # Range.End direction, for finding the last used row
 XL_LEFT = -4131
 MSO_TEXT_HORIZONTAL = 1
 # Paragraph alignment inside a text box. A column stack's tier captions are
 # right-aligned into the left margin, so they end where the plot begins.
 MSO_ALIGN_LEFT, MSO_ALIGN_RIGHT = 1, 3
+
+# The shading that says "this cell is typed, everything right of it is a
+# formula". It was written out fourteen times before this constant existed,
+# which is fourteen chances for one of them to drift and quietly stop meaning
+# the same thing as the other thirteen.
+INPUT_FILL = "#FFF2CC"
+
+# The shading for a typed cell that is *not* traceable to a source - a plan or
+# forecast scenario the reporting entity never published, constructed here on a
+# stated basis. IBCS says nothing about this, because IBCS notates how a number
+# came to exist as a *scenario*, not how the author came by it. On a workbook
+# built from a real company's filings that distinction matters more than the
+# notation does: a reader has to be able to see, without reading anything, which
+# figures the company reported and which this workbook assumed.
+#
+# Deliberately a different hue rather than a different intensity of the same
+# one, so it survives greyscale printing and the common colour-vision
+# deficiencies - the two ways a shade-only signal fails.
+ASSUMED_FILL = "#DEEBF7"
+
+
+def input_fill(t: D.Template, scenario: str = "") -> int:
+    """The shading for a typed cell, chosen by where its figures came from.
+
+    Falls back to the ordinary input shade whenever a template says nothing
+    about provenance, which is every template of the recreation - so this
+    changes no sheet that does not ask for it.
+    """
+    return rgb(ASSUMED_FILL if t.basis_of(scenario) == "assumed" else INPUT_FILL)
 
 
 def rgb(hex_colour: str) -> int:
@@ -442,7 +474,37 @@ def write_data(sheet, t: D.Template, layout: L.SheetLayout) -> tuple[int, int]:
         # The typed cells are shaded and the derived ones greyed, so it is
         # obvious which columns are yours to change.
         if column.typed:
-            cells.Interior.Color = rgb("#FFF2CC")
+            # A sheet has two typed columns: the reference scenario and the
+            # measure. They can differ in provenance - on a workbook built from
+            # filings the measure is reported and the plan beside it is
+            # constructed - so they are shaded independently.
+            #
+            # The measure column is shaded a **cell at a time**, because a
+            # single column can hold more than one scenario: eleven reported
+            # months and a forecast tail sit in the same column, and shading it
+            # as one block paints a constructed figure in the colour that means
+            # reported. That is the exact failure this shading exists to
+            # prevent, so it cannot be done at column granularity.
+            if column.key == "ref":
+                cells.Interior.Color = input_fill(t, layout.reference(t))
+            else:
+                scenarios = t.category_scenarios
+                for offset, (kind, index) in enumerate(t.sheet_rows()):
+                    if kind == "category" and index < len(scenarios):
+                        scenario = scenarios[index]
+                    elif kind == "summary" and index < len(t.summary_rows):
+                        # A total that stacks a constructed scenario is itself
+                        # partly constructed. Shading it as reported because
+                        # most of it is would be the wrong half to round to.
+                        stack = t.summary_rows[index].stack
+                        scenario = next(
+                            (s for s, _v in stack
+                             if t.basis_of(s) == "assumed"),
+                            stack[0][0] if stack else "AC")
+                    else:
+                        scenario = "AC"
+                    sheet.Cells(first + offset, i).Interior.Color = \
+                        input_fill(t, scenario)
         elif column.key not in ("period", "scenario", "line", "sign"):
             cells.Font.Color = rgb("#808080")
 
@@ -558,7 +620,7 @@ def _write_title_block(sheet, t: D.Template, layout: L.SheetLayout) -> None:
         # itself Excel stores it as the number 2025 and right-aligns it.
         cell.NumberFormat = "@"
         cell.Value = values[field]
-        cell.Interior.Color = rgb("#FFF2CC")      # shaded like the typed columns
+        cell.Interior.Color = rgb(INPUT_FILL)      # shaded like the typed columns
 
     # The derived lines. NumberFormat is left alone here - setting "@" on a cell
     # and then giving it a formula makes Excel display the formula rather than
@@ -780,14 +842,19 @@ def _pick(tier: D.Tier, scenario: str, index: int):
 # --------------------------------------------------------------------------- #
 
 
-def _scaled_bounds(sheet, layout: L.SheetLayout,
-                   spec: L.TierSpec) -> tuple[float, float]:
+def _scaled_bounds(sheet, layout: L.SheetLayout, spec: L.TierSpec,
+                   t: D.Template | None = None) -> tuple[float, float]:
     """One tier's axis bounds, as fractions of its group's span.
 
     Falls back to the declared bounds where the sheet has no scale block, so a
     template that has not been converted still builds and still draws exactly
     what it drew before.
     """
+    # Bounds already expressed as fractions of the span need no division: they
+    # are the form the rest of the block assumes and the layout does not use.
+    if t is not None and spec.key in t.tier_bounds:
+        return t.tier_bounds[spec.key]
+
     lo, hi = spec.bounds
     key = f"span_{spec.scale_group}"
     if not spec.scale_group or key not in layout.col:
@@ -865,7 +932,7 @@ def add_tier(sheet, t: D.Template, layout: L.SheetLayout, spec: L.TierSpec,
     # the series are fractions of the same span, and any figures at all land
     # inside it. With the shipped data the span is exactly the old maximum, so
     # the picture does not move.
-    axis.MinimumScale, axis.MaximumScale = _scaled_bounds(sheet, layout, spec)
+    axis.MinimumScale, axis.MaximumScale = _scaled_bounds(sheet, layout, spec, t)
 
     # A bar chart plots its first category at the bottom. Every table and bar
     # template reads top-down, so the order has to be reversed - and the value
@@ -1645,7 +1712,356 @@ SIMPLE_NOTE = [
 ]
 
 
-def write_read_me(sheet, simple: bool = False) -> None:
+def read_me_own_data(templates: list[D.Template]) -> list[tuple[str, int, bool]]:
+    """The Read me for a workbook drawn from somebody's own figures.
+
+    Keeps the middle of ``READ_ME`` verbatim, because those paragraphs - the
+    live workbook, the derived columns, the linked text, IBCS notation, UN 4.1
+    on colour - are true of any data at all. Only two things in it are not, and
+    both are replaced: the title, and the closing line claiming this recreates
+    the Institute's published templates. It does not. It uses their notation on
+    somebody else's numbers, which is a different claim and has to read as one.
+
+    Two disclaimers rather than one. A workbook of a real company's figures in
+    polished notation could be taken for that company's own reporting, and the
+    IBCS(R) disclaimer does nothing about that.
+    """
+    entities = sorted({t.title.entity for t in templates})
+    entity = entities[0] if len(entities) == 1 else "several entities"
+    sources = sorted({t.source_ref for t in templates if t.source_ref})
+    assumed = sorted({n.scenario for t in templates for n in t.provenance
+                      if n.basis == "assumed"})
+
+    head = [(f"IBCS® notation on {entity}'s reported figures", 14, True)]
+    middle = list(READ_ME[1:-1])
+
+    tail = [
+        ("A third shade. Cells shaded blue are typed like the others, but hold "
+         "figures the entity never published - a plan or forecast constructed "
+         "here on a basis stated under the data and on the Sources sheet. "
+         "Everything else shaded is as reported. Replace either and the charts "
+         "follow."
+         + (f" Scenarios constructed this way: {', '.join(assumed)}."
+            if assumed else ""), 11, False),
+        ("", 11, False),
+        (f"Figures are from public filings{': ' + '; '.join(sources) if sources else ''}. "
+         f"Every figure is either read from a filing or derived from ones that "
+         f"were, and the Sources sheet says which.", 10, False),
+        ("", 11, False),
+        ("Drawn in IBCS® notation from publicly reported figures. IBCS® is a "
+         "registered trademark of the IBCS Association; this is not an IBCS "
+         "Institute publication and is not endorsed by, affiliated with, or "
+         "produced in cooperation with it.", 9, False),
+        ("", 11, False),
+        (f"Not affiliated with, endorsed by, or produced in cooperation with "
+         f"{entity}. This workbook is an independent presentation of figures "
+         f"that company published; it is not that company's reporting.",
+         9, False),
+    ]
+    return head + middle + tail
+
+
+def verify_axis_containment(sheet, t: D.Template) -> list[str]:
+    """Is every drawn point inside the axis its own chart declares?
+
+    The check that would have caught the worst defect this codebase has had.
+    Tier charts plot values divided by their group's span, so the series always
+    land in 0..1; the axis bounds, though, are declared in *data units* and then
+    divided by the live span. Those two agree only when the span is the one the
+    bounds were measured against. Give the sheet figures forty-seven times
+    larger and the axis comes out forty-seven times too small - every bar
+    exceeds it, Excel clamps them all to full height, and the chart reads as
+    flat while the data underneath varies fourfold.
+
+    Nothing else catches it. The build's own geometry verification passes,
+    because the charts are laid out correctly. ``test_rescale`` passes, because
+    multiplying the inputs by a hundred scales the span too and leaves the
+    normalised values exactly where they were. The tie-outs pass, because the
+    arithmetic is right. The picture is the only thing that is wrong, and this
+    is the only check that looks at it.
+
+    Zero-height points are skipped. A waterfall carries an invisible base series
+    of zeros that sits below a lifted axis minimum by construction; a bar of no
+    height cannot be clamped into looking like something it is not, so it is not
+    what this is hunting.
+    """
+    problems: list[str] = []
+    for obj in sheet.ChartObjects():
+        chart = obj.Chart
+        try:
+            axis = chart.Axes(XL_VALUE)
+            lo, hi = axis.MinimumScale, axis.MaximumScale
+        except Exception:                     # noqa: BLE001 - no value axis
+            continue
+        stacked = chart.ChartType in (XL_COLUMN_STACKED, XL_BAR_STACKED)
+        columns: list[list[float]] = []
+        for i in range(1, chart.SeriesCollection().Count + 1):
+            series = chart.SeriesCollection(i)
+            try:
+                raw = series.Values
+            except Exception:                 # noqa: BLE001
+                continue
+            row = [v if isinstance(v, (int, float)) else 0.0 for v in (raw or [])]
+            while len(columns) < len(row):
+                columns.append([])
+            for j, v in enumerate(row):
+                columns[j].append(v)
+
+        # A stacked chart draws the *running total*, not the series value. A
+        # waterfall's riser is a small increment sitting on an invisible base
+        # that lifts it into view: read the increments against the axis and
+        # every riser looks wildly out of bounds while the picture is perfect.
+        # What is drawn is the cumulative height, so that is what is checked.
+        values: list[float] = []
+        for column in columns:
+            if stacked:
+                running = 0.0
+                for v in column:
+                    running += v
+                    values.append(running)
+            else:
+                values += column
+        values = [v for v in values if v != 0]
+        outside = [v for v in values if v > hi + 1e-9 or v < lo - 1e-9]
+        if not outside:
+            continue
+        worst = max(outside, key=lambda v: max(v - hi, lo - v))
+        problems.append(
+            f"{t.id}{t.variant}: {obj.Name} draws {len(outside)} of "
+            f"{len(values)} points outside its own axis "
+            f"({lo:+.4g}..{hi:+.4g}, worst {worst:+.4g}). Excel clamps those to "
+            f"the frame, so they render at full height whatever they are worth "
+            f"- the chart will look flat. The axis bounds do not suit this "
+            f"data; declare them as fractions of the span in "
+            f"Template.tier_bounds.")
+    return problems
+
+
+def contain_data_zone_text(sheet, t: D.Template) -> None:
+    """Bound every long string in the data zone to the data zone.
+
+    Run after the sheet is finished, and that timing is the point. The title
+    block is written before the column widths are set, so anything merged at
+    write time is merged against default widths and stretches when the real ones
+    arrive - which is how a merge meant to *contain* text ended up reaching
+    thirty points under the charts.
+
+    Here the widths are final and the charts exist, so the boundary is measured
+    rather than predicted: the merge runs to the last column that still ends
+    left of the first chart.
+    """
+    charts = list(sheet.ChartObjects())
+    if not charts:
+        return
+    boundary = min(c.Left for c in charts)
+    if boundary < 200:          # tables and panel grids interleave by design
+        return
+
+    # The last column ending inside the zone, from the finished widths.
+    last = 1
+    while last < 60:
+        following = sheet.Cells(1, last + 1)
+        if following.Left + following.Width > boundary:
+            break
+        last += 1
+    if last < 2:
+        return
+
+    for row in range(1, 13):
+        cell = sheet.Cells(row, 2)
+        text = cell.Value
+        if not isinstance(text, str) or len(text) < 20:
+            continue
+        area = cell.MergeArea
+        if area.Columns.Count > 1:
+            area.UnMerge()
+        sheet.Range(sheet.Cells(row, 2), sheet.Cells(row, last)).Merge()
+        cell = sheet.Cells(row, 2)
+        cell.WrapText = True
+        cell.HorizontalAlignment = XL_LEFT
+        cell.VerticalAlignment = XL_BOTTOM
+        width = sheet.Cells(row, 2).MergeArea.Width
+        per_line = max(1, int(width / (cell.Font.Size * 0.5)))
+        lines = max(1, -(-len(text) // per_line))
+        sheet.Rows(row).RowHeight = max(sheet.Rows(row).RowHeight, 12.0 * lines)
+
+
+def verify_text_containment(sheet, t: D.Template) -> list[str]:
+    """Does any text in the data zone render into the chart zone?
+
+    The two zones are the workbook's one structural promise - "the source data
+    on the left, the charts to its right, they never overlap" - and text is the
+    only thing that can break it without anything else noticing. A number stops
+    at its cell edge. A sentence in an unmerged cell keeps going across its
+    empty neighbours, and where it crosses the boundary Excel draws a chart on
+    top of it: the sentence is not clipped, it is buried.
+
+    Nothing else looks for this. The geometry verification checks where charts
+    are, not what is underneath them; the zone width is measured from declared
+    column widths, which a spilling string does not change.
+
+    A wrapped cell cannot spill - wrapping is what bounds text to its own
+    width - so only unwrapped cells are measured, and their width is estimated
+    from the font: roughly half the point size per character, which is close
+    enough to catch a sentence and not so tight it fires on a column heading.
+    """
+    charts = list(sheet.ChartObjects())
+    if not charts:
+        return []
+    boundary = min(c.Left for c in charts)
+
+    # Only the families that actually split the sheet into two zones. A table
+    # sets its bars *among* its columns and a panel grid spans the whole page:
+    # in both, a chart to the left of some text is the design rather than a
+    # collision, and measuring them against this rule reports the layout working
+    # as intended. The split families put their charts a long way right, which
+    # is what this threshold recognises.
+    if boundary < 200:
+        return []
+
+    problems: list[str] = []
+    last_row = sheet.Cells(sheet.Rows.Count, 1).End(XL_UP).Row
+    for row in range(1, min(last_row, 200) + 1):
+        for column in (1, 2, 3):
+            cell = sheet.Cells(row, column)
+            text = cell.Value
+            if not isinstance(text, str) or len(text) < 20:
+                continue
+            area = cell.MergeArea
+            # A wrapped cell cannot spill past its own width - but its width is
+            # the merged width, and a merge that itself reaches into the chart
+            # zone has simply moved the problem rather than fixed it.
+            if cell.WrapText:
+                right = area.Left + area.Width
+                if right > boundary + 0.5:
+                    problems.append(
+                        f"{t.id}{t.variant}: {chr(64 + column)}{row} is merged "
+                        f"to {right:.0f}pt, past the chart zone at "
+                        f"{boundary:.0f}pt - the merge reaches under the "
+                        f"charts. Merge to the last column that ends inside "
+                        f"the data zone.")
+                continue
+            reach = area.Left + len(text) * cell.Font.Size * 0.5
+            if reach > boundary:
+                problems.append(
+                    f"{t.id}{t.variant}: the text in "
+                    f"{chr(64 + column)}{row} is not wrapped and runs to about "
+                    f"{reach:.0f}pt, past the chart zone at {boundary:.0f}pt - "
+                    f"Excel will draw a chart over it. Merge it across the data "
+                    f"zone and wrap it, as the title block does.")
+    return problems
+
+
+def write_provenance_note(sheet, t: D.Template) -> None:
+    """State on the sheet itself what was assumed, and on what basis.
+
+    The third of three signals, and the one that survives the other two being
+    lost. A shaded cell says a figure was constructed, but shading does not
+    survive a copy-paste-values or a photocopy; the Sources sheet says what was
+    constructed, but only to a reader who thinks to look at another tab. A line
+    of text under the data travels with the numbers.
+
+    Written below whatever the sheet already holds in column A rather than at a
+    declared row, because the seventeen layouts put their data zones in
+    seventeen different places and a hard-coded row would land in the middle of
+    one of them.
+    """
+    assumed = [n for n in t.provenance if n.basis == "assumed"]
+    if not assumed:
+        return
+
+    # How wide the data zone is, measured before anything is merged. Charts are
+    # floating shapes rather than cells, so the used range is the data zone and
+    # nothing else - which makes this work for every layout family without
+    # having to be handed one.
+    last_column = sheet.UsedRange.Columns.Count
+    row = sheet.Cells(sheet.Rows.Count, 1).End(XL_UP).Row + 2
+
+    for note in assumed:
+        span = sheet.Range(sheet.Cells(row, 1), sheet.Cells(row, last_column))
+        # Measured before the merge: a merged range does not report the width of
+        # the columns it spans.
+        width = span.Width
+        span.Merge()
+
+        cell = sheet.Cells(row, 1)
+        cell.NumberFormat = "@"
+        cell.Value = (f"{note.scenario} is not reported by the entity. "
+                      f"{note.detail} Replace these cells with your own "
+                      f"figures and every chart on this sheet follows.")
+        cell.Font.Color = rgb(S.PAGE["footnote"])
+        cell.Font.Size = 9
+        cell.Interior.Color = rgb(ASSUMED_FILL)
+        # Merged and wrapped, for the reason the title block is: text in an
+        # unmerged cell spills across its empty neighbours, and the spill runs
+        # straight into the chart zone. Excel draws the charts over it, so the
+        # note lands inside the printed picture instead of under the data.
+        cell.WrapText = True
+        cell.HorizontalAlignment = XL_LEFT
+        cell.VerticalAlignment = XL_TOP
+
+        # Merged cells do not auto-fit their height, so it is computed. Arial 9
+        # runs about half its point size per character, which is close enough to
+        # pick a line count that does not clip.
+        per_line = max(1, int(width / (9 * 0.5)))
+        lines = max(1, -(-len(str(cell.Value)) // per_line))
+        sheet.Rows(row).RowHeight = 12.0 * lines
+        row += 1
+
+
+def write_sources(sheet, templates: list[D.Template]) -> None:
+    """One row per scenario whose figures are not simply reported.
+
+    Only written when at least one template carries provenance, so the
+    recreation - where every figure comes from one published rendering and the
+    Read me says so once - does not gain an empty sheet it never had.
+
+    The point of the sheet is that a reader can answer "where did this number
+    come from" without opening a browser, and can see at a glance which
+    scenarios this workbook constructed rather than found. A shaded cell says
+    *that* a figure was assumed; this says *what was assumed and why*.
+    """
+    sheet.Name = "Sources"
+    sheet.Cells(1, 1).Value = "Where the figures come from"
+    sheet.Cells(1, 1).Font.Size = 14
+    sheet.Cells(1, 1).Font.Bold = True
+
+    headers = ("Sheet", "Scenario", "Basis", "Detail")
+    for j, text in enumerate(headers, start=1):
+        cell = sheet.Cells(3, j)
+        cell.Value = text
+        cell.Font.Bold = True
+    sheet.Range(sheet.Cells(3, 1), sheet.Cells(3, len(headers))).Borders(9).LineStyle = 1
+
+    row = 4
+    for t in sorted(templates, key=lambda x: f"{x.id}{x.variant}"):
+        for note in t.provenance:
+            sheet.Cells(row, 1).Value = f"{t.id}{t.variant}"
+            sheet.Cells(row, 2).Value = note.scenario
+            sheet.Cells(row, 3).Value = note.basis
+            sheet.Cells(row, 4).Value = note.detail
+            if note.basis == "assumed":
+                # Shaded the same way the cells themselves are, so the sheet and
+                # the workbook agree without anybody having to be told twice.
+                sheet.Range(sheet.Cells(row, 1),
+                            sheet.Cells(row, 4)).Interior.Color = rgb(ASSUMED_FILL)
+            row += 1
+
+    for j, width in enumerate((10, 12, 12, 96), start=1):
+        sheet.Columns(j).ColumnWidth = width
+    sheet.Rows(f"4:{max(row - 1, 4)}").VerticalAlignment = XL_TOP
+    sheet.Columns(4).WrapText = True
+
+    legend = row + 1
+    sheet.Cells(legend, 1).Value = (
+        "filed = the figure appears in a filing.   "
+        "derived = computed from filed figures by the rule stated beside it.   "
+        "assumed = a modelling choice the entity never published; shaded on "
+        "its own sheet so it cannot be mistaken for something reported.")
+    sheet.Cells(legend, 1).Font.Color = rgb(S.PAGE["footnote"])
+
+
+def write_read_me(sheet, simple: bool = False, lines: list | None = None) -> None:
     """A cover sheet, and the workbook's own attribution.
 
     Its own footer, deliberately. The reference renders carry an IBCS Institute
@@ -1653,7 +2069,7 @@ def write_read_me(sheet, simple: bool = False) -> None:
     """
     sheet.Name = "Read me"
     sheet.Columns(1).ColumnWidth = 100.0
-    lines = list(READ_ME) + (SIMPLE_NOTE if simple else [])
+    lines = list(lines if lines is not None else READ_ME)         + (SIMPLE_NOTE if simple else [])
     for row, (text, size, bold) in enumerate(lines, start=2):
         cell = sheet.Cells(row, 1)
         cell.Value = text
@@ -1719,6 +2135,53 @@ def excel_number_format(tier: D.Tier, layout: L.TableLayout) -> str:
             f"{body}{suffix}")
 
 
+def _zone_last_column(sheet, layout) -> int:
+    """The last column of the data zone, however this layout declares it.
+
+    A tier stack says so outright (``last_column``). The XY, table, line and
+    tree layouts do not, but they all declare where the *chart* zone begins in
+    points, and the data zone is what is left of it - so the boundary is walked
+    out column by column until the next one would cross it.
+    """
+    declared = getattr(layout, "last_column", None)
+    if declared:
+        return int(declared)
+    limit = getattr(layout, "chart_left", None)
+    if not limit:
+        return 2
+    # The next column is taken only if its *right* edge is still inside the
+    # zone. Testing its left edge instead lets in the column that straddles the
+    # boundary, and the merged cell then reaches past the charts - which is the
+    # very thing the merge is for.
+    column = 2
+    while column < 60:
+        following = sheet.Cells(1, column + 1)
+        if following.Left + following.Width > limit:
+            break
+        column += 1
+    return column
+
+
+def _merge_into_zone(sheet, row: int, last: int):
+    """One title row's value cell, merged across the data zone and wrapped.
+
+    Long text in an unmerged cell spills across its empty neighbours and runs
+    straight into the chart zone, where Excel draws the charts over it - so the
+    sentence ends up inside the printed picture. ``_write_title_block`` has
+    always merged for exactly this reason; the block shared by the XY, table,
+    line and tree sheets did not, so the same message behaved differently
+    depending on which family drew it. It was only invisible on the reference
+    data because those messages are short.
+    """
+    if last > 2:
+        sheet.Range(sheet.Cells(row, 2), sheet.Cells(row, last)).Merge()
+    cell = sheet.Cells(row, 2)
+    cell.WrapText = True
+    cell.HorizontalAlignment = XL_LEFT
+    cell.VerticalAlignment = XL_BOTTOM
+    return cell
+
+
 def _write_input_block(sheet, t: D.Template, layout, reference: str) -> None:
     """The six typed inputs and the subject line built from them.
 
@@ -1731,20 +2194,31 @@ def _write_input_block(sheet, t: D.Template, layout, reference: str) -> None:
     values = {"entity": t.title.entity, "measure": t.title.measure,
               "unit": t.title.unit, "period": t.title.period,
               "reference": reference, "message": t.title.message}
+    last = _zone_last_column(sheet, layout)
     for field in L.TITLE_INPUTS:
         row = layout.title_row(field)
         label = sheet.Cells(row, 1)
         label.Value = field.capitalize()
         label.Font.Color = rgb("#808080")
-        cell = sheet.Cells(row, 2)
+        cell = _merge_into_zone(sheet, row, last)
         cell.NumberFormat = "@"
         cell.Value = values[field]
-        cell.Interior.Color = rgb("#FFF2CC")      # shaded like every typed input
+        cell.Interior.Color = rgb(INPUT_FILL)      # shaded like every typed input
+
+    # Merged cells do not auto-fit their height, so the message - the one field
+    # long enough to need more than a line - gets an explicit one.
+    message_row = layout.title_row("message")
+    width = sheet.Range(sheet.Cells(message_row, 2),
+                        sheet.Cells(message_row, max(last, 2))).Width
+    per_line = max(1, int(width / (10 * 0.5)))
+    lines = max(1, -(-len(str(values["message"])) // per_line))
+    sheet.Rows(message_row).RowHeight = max(
+        sheet.Rows(message_row).RowHeight, 12.0 * lines)
 
     subject = sheet.Cells(layout.title_row("subject"), 1)
     subject.Value = "Subject"
     subject.Font.Color = rgb("#808080")
-    cell = sheet.Cells(layout.title_row("subject"), 2)
+    cell = _merge_into_zone(sheet, layout.title_row("subject"), last)
     # A template with no single unit leaves it blank, and the subject line has
     # to stop rather than trail off in a dangling "in". C10 plots three measures
     # in three units, so none of them can head the chart.
@@ -1899,7 +2373,7 @@ def _write_table_body(sheet, t: D.Template, layout: L.TableLayout) -> None:
                     cell.Formula = L.subtotal_formula(t, layout, i, letter)
                 else:
                     cell.Value = entry.value(i)
-                    cell.Interior.Color = rgb("#FFF2CC")
+                    cell.Interior.Color = rgb(INPUT_FILL)
             elif entry.value(i) is None:
                 # The template has no value here - T04A's margin row carries no
                 # variance - so the cell stays empty rather than holding a
@@ -2531,6 +3005,17 @@ def _structure_subtotal(t: D.Template, row: int, index: int) -> str:
         for p in parts)
 
 
+def _panel_format(layout, panel: D.StructurePanel) -> str:
+    """How a panel writes its figures: its own choice, or the layout's.
+
+    The layout format is tuned to the reference data's magnitude. A panel
+    carrying figures of a different size says so, and says it beside the
+    figures rather than in the layout, because that is where the magnitude is
+    decided.
+    """
+    return panel.number_format or layout.number_format
+
+
 def _write_structure_data(sheet, t: D.Template, layout: L.StructureLayout) -> dict:
     """The typed segment values, and a total under each column that is a formula."""
     blocks = _structure_blocks(t, layout)
@@ -2558,7 +3043,7 @@ def _write_structure_data(sheet, t: D.Template, layout: L.StructureLayout) -> di
             label.Value = segment.label
             for j in range(len(panel.categories)):
                 cell = sheet.Cells(r, 2 + j)
-                cell.NumberFormat = layout.number_format
+                cell.NumberFormat = _panel_format(layout, panel)
                 row_kind = (t.rows[j].kind if j < len(t.rows) else "element")
                 if row_kind == "subtotal":
                     # A total with components is a formula. On this sheet the
@@ -2569,7 +3054,7 @@ def _write_structure_data(sheet, t: D.Template, layout: L.StructureLayout) -> di
                     cell.Font.Bold = True
                 else:
                     cell.Value = segment.values[j]
-                    cell.Interior.Color = rgb("#FFF2CC")
+                    cell.Interior.Color = rgb(INPUT_FILL)
 
         total_row = top + 1 + len(panel.segments)
         total = sheet.Cells(total_row, 1)
@@ -2578,7 +3063,7 @@ def _write_structure_data(sheet, t: D.Template, layout: L.StructureLayout) -> di
         total.Font.Bold = True
         for j in range(len(panel.categories)):
             cell = sheet.Cells(total_row, 2 + j)
-            cell.NumberFormat = layout.number_format
+            cell.NumberFormat = _panel_format(layout, panel)
             cell.Font.Bold = True
             # A total with components is a formula. Same rule as everywhere
             # else, and here it is also what the label over the column reads.
@@ -2644,15 +3129,36 @@ def _write_structure_scale(sheet, t: D.Template, layout: L.StructureLayout,
     for panel in t.structure_panels:
         top = blocks[panel.key]
         rows = list(range(top + 1, top + 2 + len(panel.segments)))
+        total_row = top + 1 + len(panel.segments)
+        outermost = rows[len(panel.segments) - 1]
         for r in rows:
             for j in range(len(panel.categories)):
                 col = 2 + j
                 raw = f"{L.col_letter(col)}{r}"
                 sheet.Cells(r + shift, col).Formula = (
                     f"=IF(ISBLANK({raw}),NA(),{raw}/{span_ref})")
+                # Whether a band can hold its own number, measured against the
+                # number itself rather than a fixed share of the axis. A fixed
+                # share cannot know how many digits it is being asked to fit:
+                # three-digit figures sit comfortably where six-digit ones get
+                # sliced in half, and a workbook meant to be pasted over cannot
+                # assume which it will be handed.
+                #
+                # The outermost band must clear the total as well. It ends where
+                # the bar does and the total is drawn there too, on an opaque
+                # label - so it covers what it lands on rather than crowding it.
+                #
+                # Still a formula, so it follows an edit like everything else.
+                width = layout.panel_width * layout.plot_fraction
+                need = f'LEN(TEXT({raw},"{_panel_format(layout, panel)}"))'
+                if r == outermost:
+                    total = f"{L.col_letter(col)}{total_row}"
+                    need += f'+LEN(TEXT({total},"{_panel_format(layout, panel)}"))'
                 sheet.Cells(r + 2 * shift, col).Formula = (
-                    f'=IF(ISBLANK({raw}),"",IF({raw}<{floor:.10g},"",'
-                    f'TEXT({raw},"{layout.number_format}")))')
+                    f'=IF(ISBLANK({raw}),"",'
+                    f'IF({raw}/{maximum:.10g}*{width:.6g}'
+                    f'<({need})*{layout.label_char_width:.6g},"",'
+                    f'TEXT({raw},"{_panel_format(layout, panel)}")))')
     for r in range(shift + 1, 2 * shift + bottom + 2):
         sheet.Rows(r).Hidden = True
     return shift, span_ref
@@ -2669,6 +3175,17 @@ def _element_range(sheet, t: D.Template, row: int, first_col: int,
     """
     wanted = [first_col + i for i, r in enumerate(t.rows[:count])
               if r.kind != "subtotal"]
+    if not wanted:
+        # Without ``rows`` this used to fail on ``wanted[0]`` with "list index
+        # out of range" - true, and useless. A horizontal structure template
+        # has to say which of its categories are subtotals, because they are
+        # the integrated legend rather than bars; nothing else in the template
+        # carries that.
+        raise ValueError(
+            f"{t.id}{t.variant}: a horizontal structure template needs "
+            f"Template.rows, one per category, marking which are subtotals "
+            f"(kind='subtotal', with spans set) and which are elements. "
+            f"It has {len(t.rows)} row(s) for {count} categories.")
     parts, run = [], [wanted[0]]
     for c in wanted[1:]:
         if c == run[-1] + 1:
@@ -2685,10 +3202,26 @@ def _add_structure_chart(sheet, t: D.Template, layout: L.StructureLayout,
                          maximum: float, shift: int = 0, span: float = 1.0):
     """One panel as a stacked column chart, on the scale every panel shares."""
     total_row = top + 1 + len(panel.segments)
-    width = layout.panel_width * len(panel.categories) / layout.max_categories
-    obj = sheet.ChartObjects().Add(left, layout.chart_top,
-                                   max(width, layout.min_panel_width),
-                                   layout.chart_height)
+    # A panel is sized so that one category always takes the same space,
+    # whichever template it belongs to - that is what lets two panels sit side
+    # by side and be read against each other.
+    #
+    # Which dimension carries the categories depends on the orientation, and
+    # scaling the wrong one is not a cosmetic mistake. A horizontal panel runs
+    # its categories down the *height* and spends its width on the value axis;
+    # scaling the width by the category count squeezes the axis instead of the
+    # bars, and with six categories against a max of twenty-one that is 160pt
+    # of value axis where 560 was intended - the labels collide and the small
+    # segments lose theirs entirely. Invisible on the reference data only
+    # because its one horizontal panel happens to carry exactly the maximum.
+    share = len(panel.categories) / layout.max_categories
+    if layout.horizontal:
+        width = layout.panel_width
+        height = max(layout.chart_height * share, layout.min_panel_width)
+    else:
+        width = max(layout.panel_width * share, layout.min_panel_width)
+        height = layout.chart_height
+    obj = sheet.ChartObjects().Add(left, layout.chart_top, width, height)
     obj.Name = f"panel_{panel.key}"
     chart = obj.Chart
     chart.ChartType = XL_BAR_STACKED if layout.horizontal else XL_COLUMN_STACKED
@@ -2724,7 +3257,7 @@ def _add_structure_chart(sheet, t: D.Template, layout: L.StructureLayout,
         series.Format.Line.Visible = MSO_FALSE
         series.HasDataLabels = True
         labels = series.DataLabels()
-        labels.NumberFormat = layout.number_format
+        labels.NumberFormat = _panel_format(layout, panel)
         labels.Font.Size = 9
         labels.Font.Name = "Arial"
         labels.Font.Color = rgb(S.on_fill(colour))
@@ -2821,7 +3354,7 @@ def _add_structure_chart(sheet, t: D.Template, layout: L.StructureLayout,
     totals.MarkerStyle = XL_NONE
     totals.HasDataLabels = True
     marks = totals.DataLabels()
-    marks.NumberFormat = layout.number_format
+    marks.NumberFormat = _panel_format(layout, panel)
     marks.Font.Size = 9
     marks.Font.Name = "Arial"
     marks.Position = XL_LABEL_ABOVE
@@ -2994,7 +3527,7 @@ def _write_line_data(sheet, t: D.Template, layout: L.LineLayout) -> dict:
                 if value is None:
                     continue
                 cell.Value = value
-                cell.Interior.Color = rgb("#FFF2CC")
+                cell.Interior.Color = rgb(INPUT_FILL)
             elif key == "mat":
                 # The one series that cannot be derived from this page - it
                 # reaches back into 2024 - so it is typed like a month.
@@ -3003,7 +3536,7 @@ def _write_line_data(sheet, t: D.Template, layout: L.LineLayout) -> dict:
                 if value is None:
                     continue
                 cell.Value = value
-                cell.Interior.Color = rgb("#FFF2CC")
+                cell.Interior.Color = rgb(INPUT_FILL)
             else:
                 source = {"cum_pl": "PL month", "cum_ac": "AC month",
                           "cum_fc": "FC month"}[key]
@@ -3270,7 +3803,7 @@ def _write_c08h_data(sheet, t: D.Template, layout: L.LineLayout) -> dict:
                 value = next((sr.values[j] for sr in t.tier(key).series
                               if sr.values[j] is not None), None)
                 cell.Value = value
-                cell.Interior.Color = rgb("#FFF2CC")
+                cell.Interior.Color = rgb(INPUT_FILL)
             elif key == "change":
                 cell.Formula = (f"={letter}{rows['Increase']}"
                                 f"-{letter}{rows['Decrease']}")
@@ -3286,8 +3819,8 @@ def _write_c08h_data(sheet, t: D.Template, layout: L.LineLayout) -> dict:
 
     opening = sheet.Cells(rows["Inventory"], 1)
     opening.NumberFormat = layout.number_format
-    opening.Value = D.C08H_OPENING
-    opening.Interior.Color = rgb("#FFF2CC")
+    opening.Value = t.opening
+    opening.Interior.Color = rgb(INPUT_FILL)
 
     # Chart feed. Two things Excel will not do from the rows above:
     #
@@ -3472,7 +4005,7 @@ def verify_c08h(sheet, t: D.Template, layout: L.LineLayout, rows: dict) -> list[
     the day it is written and wrong ever after.
     """
     problems: list[str] = []
-    levels = (D.C08H_OPENING,) + D.C08H_LEVELS
+    levels = (t.opening,) + t.tier("level").merged()
     for j in range(len(t.categories)):
         cell = sheet.Cells(rows["Inventory"], 2 + j)
         if not str(cell.Formula).startswith("="):
@@ -3612,7 +4145,7 @@ def _write_xy_inputs(sheet, t: D.Template, layout: L.XYLayout) -> None:
         cell = sheet.Cells(layout.size_row, column)
         cell.NumberFormat = "@"
         cell.Value = value
-        cell.Interior.Color = rgb("#FFF2CC")
+        cell.Interior.Color = rgb(INPUT_FILL)
 
 
 def _write_xy_data(sheet, t: D.Template, layout: L.XYLayout) -> dict:
@@ -3669,7 +4202,7 @@ def _write_xy_data(sheet, t: D.Template, layout: L.XYLayout) -> dict:
             rng.NumberFormat = fmt
             rng.Value = tuple((v,) for v in values)
             if shade:
-                rng.Interior.Color = rgb("#FFF2CC")
+                rng.Interior.Color = rgb(INPUT_FILL)
 
         block(1, [p.entity for p in points], "@")
         block(2, [p.x for p in points], layout.coordinate_format, shade=True)
@@ -3695,7 +4228,7 @@ def _xy_series_colour(t: D.Template, layout: L.XYLayout, key: str) -> str:
     """
     if layout.series_key == "scenario":
         return S.bubble_fill(key)[0]
-    return S.structure_colour(D.C09C_ACCENT[key], accent=True)
+    return S.structure_colour(t.accent_of(key), accent=True)
 
 
 def _add_xy_chart(sheet, t: D.Template, layout: L.XYLayout, rows: dict,
@@ -3756,6 +4289,13 @@ def _add_xy_chart(sheet, t: D.Template, layout: L.XYLayout, rows: dict,
         marks.Font.Name = "Arial"
         for n, point in enumerate(points, start=1):
             label = series.Points(n).DataLabel
+            # Where two markers sit on top of each other their names do too, and
+            # four names in one corner is worse than three. ``unlabelled`` names
+            # the ones that give way. Only the *name* goes: every value label is
+            # kept, which is the rule the SVG engine follows - and until now the
+            # only engine that followed it at all, so a workbook drew the
+            # collisions the page had already been taught to avoid.
+            hushed = (point.entity, point.scenario) in t.unlabelled
             if sized:
                 # Name and value in one label. The page puts the name above the
                 # bubble and the value inside it, which needs two labels on one
@@ -3763,7 +4303,10 @@ def _add_xy_chart(sheet, t: D.Template, layout: L.XYLayout, rows: dict,
                 # the same two things.
                 label.Position = XL_LABEL_CENTRE
                 label.Font.Color = rgb(S.on_fill(colour))
-                label.Text = f"{point.entity}{chr(10)}{point.size:,.1f}"
+                label.Text = (f"{point.size:,.1f}" if hushed
+                              else f"{point.entity}{chr(10)}{point.size:,.1f}")
+            elif hushed:
+                series.Points(n).HasDataLabel = False
             elif point.entity:
                 label.Position = XL_LABEL_ABOVE
                 label.Text = point.entity
@@ -3829,9 +4372,15 @@ def verify_xy(sheet, t: D.Template, layout: L.XYLayout, rows: dict,
         first, last = rows[scenario]
         series = chart.SeriesCollection(n)
         formula = str(series.Formula)
-        for what, want in (("x", f"$B${first}:$B${last}"),
-                           ("y", f"$C${first}:$C${last}")):
-            if want not in formula:
+        for what, column in (("x", "B"), ("y", "C")):
+            want = f"${column}${first}:${column}${last}"
+            # Excel writes a one-row range as a plain cell - ``$B$19`` rather
+            # than ``$B$19:$B$19`` - and they are the same reference. The
+            # reference dataset never met this because its acquisitions come in
+            # pairs; a scenario with a single point is perfectly legal and was
+            # being reported as a broken series.
+            accepted = (want, f"${column}${first}") if first == last else (want,)
+            if not any(a in formula for a in accepted):
                 problems.append(
                     f"{layout.template_id}: the {scenario} series does not read "
                     f"its {what} from {want} - it is {formula}")
@@ -3898,20 +4447,21 @@ def _write_c09_extras(sheet, t: D.Template, layout: L.XYLayout,
     count_row = last_row + 2
     label = sheet.Cells(count_row, 1)
     label.NumberFormat = "@"
-    label.Value = f"{D.C09C_MESSAGE_LINE} at {D.C09C_SEGMENT:.0f} mUSD or more"
+    iso = t.iso_curves
+    label.Value = f"{iso.group} at {iso.segment:.0f} mUSD or more"
     label.Font.Bold = True
     count = sheet.Cells(count_row, 5)
     count.Formula = (f'=SUMPRODUCT((D{first_row}:D{last_row}="'
-                     f'{D.C09C_MESSAGE_LINE}")*(E{first_row}:E{last_row}>='
-                     f'{D.C09C_SEGMENT}))')
+                     f'{iso.group}")*(E{first_row}:E{last_row}>='
+                     f'{iso.segment}))')
     count.Font.Bold = True
     stated = sheet.Cells(count_row + 1, 1)
     stated.NumberFormat = "@"
     stated.Value = "stated in the message"
     stated.Font.Color = rgb(S.PAGE["footnote"])
     told = sheet.Cells(count_row + 1, 5)
-    told.Value = D.C09C_MESSAGE_COUNT
-    told.Interior.Color = rgb("#FFF2CC")
+    told.Value = iso.count
+    told.Interior.Color = rgb(INPUT_FILL)
     told.Font.Color = rgb(S.PAGE["footnote"])
 
     # The curves: margin down one column, one column of net sales per level.
@@ -3922,23 +4472,24 @@ def _write_c09_extras(sheet, t: D.Template, layout: L.XYLayout,
     tag.Value = "Iso gross profit"
     tag.Font.Bold = True
     sheet.Cells(curve_head, 2).Value = "Margin"
-    for j, level in enumerate(D.C09C_ISO_PROFIT):
+    for j, level in enumerate(iso.levels):
         sheet.Cells(curve_head, 3 + j).Value = level
     lo, hi = curve_head + 1, curve_head + C09C_CURVE_STEPS
     # Spread across the axis, but starting where the highest curve leaves the
     # top of the plot rather than at zero, where it runs to infinity.
-    start = D.C09C_ISO_PROFIT[-1] * 100.0 / axis_y.maximum
+    start = iso.levels[-1] * 100.0 / axis_y.maximum
     margins = [start + (axis_x.maximum - start) * i / (C09C_CURVE_STEPS - 1)
                for i in range(C09C_CURVE_STEPS)]
     rng = sheet.Range(sheet.Cells(lo, 2), sheet.Cells(hi, 2))
     rng.NumberFormat = "0.00"
     rng.Value = tuple((m,) for m in margins)
-    for j, level in enumerate(D.C09C_ISO_PROFIT):
+    for j, level in enumerate(iso.levels):
         rng = sheet.Range(sheet.Cells(lo, 3 + j), sheet.Cells(hi, 3 + j))
         rng.NumberFormat = "0.00"
         rng.Formula = (f"=IF({level}*100/$B{lo}>{axis_y.maximum},NA(),"
                        f"{level}*100/$B{lo})")
     return {"gross_profit": gp_col, "count": count_row, "curves": (lo, hi),
+            "levels": iso.levels,
             "first": first_row, "last": last_row,
             "blocks": sorted(rows.values())}
 
@@ -3946,7 +4497,7 @@ def _write_c09_extras(sheet, t: D.Template, layout: L.XYLayout,
 def _add_c09_curves(chart, sheet, extras: dict) -> None:
     """Each iso-profit curve as a line series with no markers."""
     lo, hi = extras["curves"]
-    for j, level in enumerate(D.C09C_ISO_PROFIT):
+    for j, level in enumerate(extras["levels"]):
         series = chart.SeriesCollection().NewSeries()
         series.Name = f"{level:.0f} mUSD"
         series.XValues = sheet.Range(sheet.Cells(lo, 2), sheet.Cells(hi, 2))
@@ -3976,15 +4527,15 @@ def verify_c09(sheet, t: D.Template, layout: L.XYLayout, extras: dict) -> list[s
         problems.append(f"{layout.template_id}: the segment count is typed; it "
                         f"is the one number on the page the message depends on")
     drawn = sum(1 for p in t.points
-                if p.group == D.C09C_MESSAGE_LINE
-                and D.c09c_gross_profit(p) >= D.C09C_SEGMENT)
+                if p.group == t.iso_curves.group
+                and D.c09c_gross_profit(p) >= t.iso_curves.segment)
     if count.Value is None or abs(float(count.Value) - drawn) > 0.5:
         problems.append(f"{layout.template_id}: the sheet counts {count.Value} "
                         f"products in the segment where the points give {drawn}")
 
     lo, hi = extras["curves"]
     for r in (lo, hi):
-        for j in range(len(D.C09C_ISO_PROFIT)):
+        for j in range(len(t.iso_curves.levels)):
             if not str(sheet.Cells(r, 3 + j).Formula).startswith("="):
                 problems.append(f"{layout.template_id}: the curve at row {r} "
                                 f"column {3 + j} is typed, not derived")
@@ -4090,7 +4641,7 @@ def build_xy_sheet(excel, sheet, template: D.Template) -> tuple[list[str], list]
           f"{template.axes[0].minimum:g}..{template.axes[0].maximum:g} and "
           f"{template.axes[1].minimum:g}..{template.axes[1].maximum:g}"
           + ("" if extras is None else
-             f", {len(D.C09C_ISO_PROFIT)} derived iso-profit curves"))
+             f", {len(template.iso_curves.levels)} derived iso-profit curves"))
     sheet.Range("A1").Select()
     # Charts only: the export step calls .Chart on everything it is handed, and
     # a linked text box has none.
@@ -4222,7 +4773,7 @@ def _write_tree_data(sheet, t: D.Template, layout: L.TreeLayout) -> dict:
             value = next((s.values[j] for s in series.series
                           if s.values[j] is not None), None)
             cell.Value = value
-            cell.Interior.Color = rgb("#FFF2CC")
+            cell.Interior.Color = rgb(INPUT_FILL)
         r += 1
     for key, (num, den, scale) in TREE_DERIVED.items():
         rows[key] = r
@@ -4800,7 +5351,7 @@ def build_tree_sheet(excel, sheet, template: D.Template) -> tuple[list[str], lis
 # every one of the fifteen panels' variances moves with it, and every pin on
 # the page follows - which is what `check_panels_are_live` proves.
 
-PANEL_INPUT_FILL = "#FFF2CC"
+PANEL_INPUT_FILL = INPUT_FILL
 
 
 def _c13_panel_style(t: D.Template):
@@ -4866,9 +5417,9 @@ def _write_panel_source(sheet, t: D.Template, layout: L.PanelLayout,
 
     rows = {}
     r = head + 2
-    for key, label, values in D.C13D_PANELS:
+    for key, values in t.panel_values.items():
         rows[key] = r
-        sheet.Cells(r, 1).Value = label
+        sheet.Cells(r, 1).Value = t.tier(key).label
         for j, value in enumerate(values):
             cell = sheet.Cells(r, 2 + j)
             cell.NumberFormat = layout.number_format
@@ -4982,7 +5533,7 @@ def _reference_panel(sheet, t: D.Template, layout: L.PanelLayout,
     strip_chrome(ch, show_categories=False)
     ch.Axes(XL_VALUE).MinimumScale = 0
     # Headroom for the labels, which sit outside the column ends.
-    ch.Axes(XL_VALUE).MaximumScale = max(D.C13D_AVERAGE) * 1.45
+    ch.Axes(XL_VALUE).MaximumScale = max(t.tier("average").merged()) * 1.45
     ch.ChartArea.Format.Fill.Visible = MSO_TRUE
     ch.ChartArea.Format.Fill.Solid()
     ch.ChartArea.Format.Fill.ForeColor.RGB = rgb("#ECECEC")
@@ -5034,7 +5585,8 @@ def build_panel_sheet(excel, sheet, template: D.Template) -> tuple[list[str], li
         if cell.key is None:
             values.append([None] * len(template.categories))
         else:
-            values.append([round(v, 4) for v in D.C13D_VARIANCE[cell.key]])
+            values.append([round(v, 4)
+                           for v in template.tier(cell.key).merged()])
 
     spec = PS.PanelSpec(
         rows=grid.rows, cols=grid.cols, periods=len(template.categories),
@@ -5395,13 +5947,21 @@ def export_chart_png(excel, sheet, obj, path: Path) -> str | None:
 
 def build(templates: list[D.Template], out: Path, keep_open: bool = False,
           export_dir: Path | None = None, simple: bool = False,
-          doc: Path | None = None) -> int:
+          doc: Path | None = None, check_ties=None) -> int:
     if win32 is None:
         print("error: pywin32 is not installed", file=sys.stderr)
         return 1
 
+    # Nothing is built on a broken tie - but *which* tie-outs is the dataset's
+    # business, not this function's. ``D.check_ties`` verifies the recreation,
+    # and several of its per-template checks read ``ibcs_data`` module globals
+    # rather than the template they were handed. Pointed at a second dataset it
+    # compares one dataset's figures against another's and fails on figures
+    # that are perfectly correct - which is exactly what happened the first
+    # time this ran on Progressive's numbers.
+    check = check_ties if check_ties is not None else D.check_ties
     for template in templates:
-        D.check_ties(template)                # nothing is built on a broken tie
+        check(template)
 
     # Nor on a layout registry that has drifted. This one is cheap, needs no
     # Excel, and guards the failure that produced a workbook whose bars had
@@ -5427,7 +5987,11 @@ def build(templates: list[D.Template], out: Path, keep_open: bool = False,
         wb = excel.Workbooks.Add()
         while wb.Sheets.Count > 1:
             wb.Sheets(wb.Sheets.Count).Delete()
-        write_read_me(wb.Sheets(1), simple)
+        # A workbook whose templates declare provenance is not a recreation of
+        # anything, and must not carry the recreation's attribution.
+        own_data = any(t.provenance for t in templates)
+        write_read_me(wb.Sheets(1), simple,
+                      read_me_own_data(templates) if own_data else None)
         wb.Sheets(1).Activate()
         wb.Windows(1).DisplayGridlines = False
         set_read_me_page_setup(wb.Sheets(1))
@@ -5437,11 +6001,21 @@ def build(templates: list[D.Template], out: Path, keep_open: bool = False,
         # were built in. The build order is historical - the tranches each
         # template was developed in - and means nothing to a reader opening the
         # workbook looking for C07.
+        if any(t.provenance for t in templates):
+            write_sources(wb.Sheets.Add(After=wb.Sheets(wb.Sheets.Count)),
+                          templates)
+
         for template in sorted(templates,
                                key=lambda t: f"{t.id}{t.variant}"):
             sheet = wb.Sheets.Add(After=wb.Sheets(wb.Sheets.Count))
             found, objects = build_sheet(excel, sheet, template, simple)
             problems.extend(found)
+            # Before the page setup, so a sheet that carries a note is paginated
+            # with the note on it rather than one row past the printed page.
+            write_provenance_note(sheet, template)
+            contain_data_zone_text(sheet, template)
+            problems.extend(verify_axis_containment(sheet, template))
+            problems.extend(verify_text_containment(sheet, template))
             set_page_setup(sheet, template)
             problems.extend(verify_page_setup(sheet))
             if doc is not None:
@@ -5478,7 +6052,11 @@ def build(templates: list[D.Template], out: Path, keep_open: bool = False,
             print(f"Wrote {write_doc(out, doc, chart_facts, simple)}")
 
     except Exception as e:                                    # noqa: BLE001
+        # With the traceback. "list index out of range" on its own names neither
+        # the sheet nor the line, and a build makes thousands of COM calls across
+        # seven sheet families - the message alone sends you to the wrong one.
         print(f"error: Excel build failed: {e}", file=sys.stderr)
+        traceback.print_exc()
         return 1
     finally:
         if not keep_open:

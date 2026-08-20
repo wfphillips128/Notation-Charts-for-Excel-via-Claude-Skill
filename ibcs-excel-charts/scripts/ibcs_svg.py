@@ -3519,7 +3519,7 @@ def render_c08h(template: D.Template = D.C08H, layout: dict | None = None) -> st
     # The level, drawn first so the movement columns sit over it - which is what
     # the reference does, and what lets an increase be read inside the stock it
     # adds to.
-    levels = (D.C08H_OPENING,) + D.C08H_LEVELS
+    levels = (t.opening,) + t.tier("level").merged()
     runs, current, previous = [], [], None
     for i, value in enumerate(levels):
         scenario = t.category_scenarios[min(i, n - 1)] if i else t.category_scenarios[0]
@@ -3785,8 +3785,12 @@ C10D_LAYOUT = dict(
     legend_label_drop=0.49,
     legend_head_baseline=115.0,
     legend_head_leading=19.0,
+    # Scenario codes, spelled the same way here as its two siblings above it.
+    # A scenario is notation vocabulary rather than anybody's data, so a layout
+    # names one directly - reaching into the data module for this one and not
+    # for "PY" or "AC" was the odd one out.
     legend_entries=(("PY", "PY"), ("AC", "AC"),
-                    (D.C10D_ACQUISITION, ("Acquisitions", "12/25"))),
+                    ("ACQ", ("Acquisitions", "12/25"))),
 
     # One size for everything the page says in words, which is what the
     # reference does: solved from the ink width of eight separate strings, all
@@ -3824,7 +3828,7 @@ def render_c10d(template: D.Template = D.C10D, layout: dict | None = None) -> st
         # that look dodged are two bubbles of different sizes with their names
         # over their own centres. Where that would put two names into each
         # other, one of them is simply not drawn.
-        if (point.entity, point.scenario) not in D.C10D_UNLABELLED:
+        if (point.entity, point.scenario) not in t.unlabelled:
             c.text(cx, cy - radius - L["name_gap"], point.entity,
                    size=F["name"], anchor="middle")
         c.text(cx, cy + F["value"] * L["label_drop"], f"{point.size:,.1f}",
@@ -4012,8 +4016,8 @@ def render_c09c(template: D.Template = D.C09C, layout: dict | None = None) -> st
 
     # The segment first, then the curves over it, then the frame, then the
     # points: everything the points are read against is underneath them.
-    iso_segment(c, plot, D.C09C_SEGMENT, L["segment_fill"])
-    for level in D.C09C_ISO_PROFIT:
+    iso_segment(c, plot, t.iso_curves.segment, L["segment_fill"])
+    for level in t.iso_curves.levels:
         scenario_line(c, iso_curve(plot, level), L["curve"],
                       L["curve_width"])
     for x0, y0, x1, y1 in ((plot.left, plot.top, plot.right, plot.top),
@@ -4022,8 +4026,9 @@ def render_c09c(template: D.Template = D.C09C, layout: dict | None = None) -> st
                            (plot.right, plot.top, plot.right, plot.bottom)):
         c.line(x0, y0, x1, y1, stroke=L["grid"], stroke_width=L["grid_width"])
 
-    for line in D.C09C_LINES:
-        colour = S.structure_colour(D.C09C_ACCENT[line], accent=True)
+    for group in t.groups:
+        line = group.name
+        colour = S.structure_colour(group.accent, accent=True)
         for point in (p for p in t.points if p.group == line):
             cx, cy = plot.at(point)
             scatter_marker(c, colour, cx, cy, L["marker_radius"],
@@ -4039,8 +4044,8 @@ def render_c09c(template: D.Template = D.C09C, layout: dict | None = None) -> st
 
     _c09_axes(c, plot, L)
     _c09_curve_captions(c, plot, t, L)
-    category_legend(c, L, [(S.structure_colour(D.C09C_ACCENT[n], accent=True), n)
-                           for n in D.C09C_LINES], "Product lines")
+    category_legend(c, L, [(S.structure_colour(g.accent, accent=True), g.name)
+                           for g in t.groups], "Product lines")
     _footer(c, L)
     return c.to_svg()
 
@@ -4076,7 +4081,7 @@ def _c09_curve_captions(canvas: Canvas, plot: XYPlot, t: D.Template,
     canvas.text(L["curve_caption_x"],
                 L["curve_caption_baseline"] + L["curve_caption_leading"],
                 f"in {t.axes[1].unit}", size=F["axis_title"])
-    for level in D.C09C_ISO_PROFIT:
+    for level in t.iso_curves.levels:
         y = plot.y(level * 100.0 / plot.axis_x.maximum)
         canvas.text(L["curve_label_x"], y + F["axis"] * 0.36, f"{level:.0f}",
                     size=F["axis"])
@@ -4188,7 +4193,7 @@ def _c11_box(canvas: Canvas, t: D.Template, node: D.TreeNode, L: dict) -> None:
     F = L["font"]
     box = C11A_BOXES[node.key]
     tier = t.tier(node.key)
-    scale = Scale(box["zero"], D.C11A_SCALE_PX[node.scale_group])
+    scale = Scale(box["zero"], t.tree.scale_px[node.scale_group])
     width, _ = L["bars"][node.column]
 
     canvas.rect(box["x0"], box["y0"], box["x1"] - box["x0"],
@@ -4268,7 +4273,7 @@ def _c11_annotations(canvas: Canvas, t: D.Template, L: dict) -> None:
         key, index = a.target
         node = t.tree.node(key)
         box = C11A_BOXES[key]
-        scale = Scale(box["zero"], D.C11A_SCALE_PX[node.scale_group])
+        scale = Scale(box["zero"], t.tree.scale_px[node.scale_group])
         value = t.tier(key).series[0].values[index]
         if value is None:
             value = t.tier(key).series[1].values[index]
@@ -4630,7 +4635,7 @@ def render_c13d(template: D.Template = D.C13D, layout: dict | None = None) -> st
             continue
         key, index = a.target
         cell = grid.cell(key)
-        value = D.C13D_VARIANCE[key][index]
+        value = t.tier(key).merged()[index]
         c_x = _c13_slot_x(L, cell, index)
         c_y = _c13_zero(L, cell) - value * L["scale"]
         highlight_oval(c, c_x, c_y - L["head_height"] / 2 - L["value_gap"]

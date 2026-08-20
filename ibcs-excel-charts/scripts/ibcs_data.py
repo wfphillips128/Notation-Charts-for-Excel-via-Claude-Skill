@@ -91,6 +91,24 @@ class Tier:
                 return s
         return None
 
+    def merged(self) -> tuple[float | None, ...]:
+        """The tier's figures as one row, the scenario masks folded together.
+
+        A tier holds one series per scenario, each masked to the periods that
+        scenario owns, so no two of them can claim the same slot. Anything that
+        needs the underlying figures rather than the drawn ones - a running
+        total, a stock's closing levels - wants them back as a single row.
+        Reading them here rather than from a module constant is what lets a
+        renderer draw the numbers the template actually carries.
+        """
+        width = max(len(s.values) for s in self.series)
+        out: list[float | None] = [None] * width
+        for s in self.series:
+            for i, v in enumerate(s.values):
+                if v is not None:
+                    out[i] = v
+        return tuple(out)
+
     def label_for(self, index: int, value: float) -> str:
         """The text to put beside an element.
 
@@ -334,6 +352,12 @@ class StructurePanel:
     legend_side: Literal["left", "right"] = "left"
     legend_at: int = 0                # the column the band names are read off
     printed_totals: Sequence[float] | None = None
+    # How this panel's figures are written, where the layout's own format does
+    # not suit them. The layouts declare one tuned to the reference data's
+    # magnitude: "0.0" reads well for figures around a hundred and prints
+    # "17258.0" for figures around twenty thousand. Magnitude is a fact about
+    # the data, so the override belongs beside the data.
+    number_format: str | None = None
 
     def total(self, index: int) -> float:
         return sum(s.at(index) for s in self.segments)
@@ -461,6 +485,10 @@ class TreeSpec:
     # avoidance in one, and both engines have to make it identically or the six
     # category axes stop reading as the same axis.
     printed_categories: Sequence[int] = ()
+    # Pixels per unit, by scale group. One ruler per unit rather than one per
+    # box: six boxes on three rulers is what makes the tree readable as one
+    # picture, so the rulers belong to the tree and not to a renderer.
+    scale_px: dict = field(default_factory=dict)
 
     def node(self, key: str) -> "TreeNode":
         for n in self.nodes:
@@ -542,6 +570,74 @@ class Point:
     y: float
     size: float | None = None
     group: str = ""
+
+
+@dataclass(frozen=True)
+class Group:
+    """One categorical class of points, and the accent it is drawn in.
+
+    A product line is not a scenario and must not be notated as one, so its
+    colour comes from the accent ramp rather than the scenario fills. The index
+    travels with the name because both renderers colour the same class and a
+    legend that disagreed with its own chart would be worse than no legend.
+    """
+
+    name: str
+    accent: int
+
+
+@dataclass(frozen=True)
+class IsoCurves:
+    """Constant-product curves on an XY chart, and the claim they support.
+
+    A constant product of two axes is a hyperbola, so a chart whose message is
+    about a product draws curves rather than a line. ``segment`` is the level
+    whose curve also bounds the shaded region the message names, which is why it
+    is one number and not two: shading drawn from one figure and a sentence
+    written from another would drift the first time either changed.
+
+    ``count`` is what the message asserts and ``group`` is the class it asserts
+    it of. Held here so the printed label, the worksheet formula that recounts
+    it and the message itself all read the same numbers.
+    """
+
+    levels: tuple[float, ...]
+    segment: float
+    group: str
+    count: int
+
+
+@dataclass(frozen=True)
+class SourceNote:
+    """Where one scenario's typed figures came from.
+
+    Three bases, because "real or invented" is too coarse for a workbook built
+    on a real company's filings:
+
+    ``filed``
+        The figures appear in a filing. Cite it.
+    ``derived``
+        Computed from filed figures by a rule - underwriting margin is
+        ``100 - combined ratio``, and nobody publishes it because nobody needs
+        to. Still traceable; state the rule.
+    ``assumed``
+        A modelling choice the entity never published. No public company
+        discloses a budget, so every plan and forecast scenario on real data is
+        this - and a reader must be able to see that without being told.
+
+    The distinction is finer than it looks. Progressive's 96 combined ratio
+    target is *filed*: it is stated in every 10-K. "Progressive planned $X of
+    underwriting profit in March 2019" is *assumed*, because applying that
+    target to a month is this workbook's construction and not the company's
+    statement. Same number, different claim.
+
+    ``detail`` is printed on the sheet. A basis without its rule is an
+    assertion, and the point of this is to stop asserting.
+    """
+
+    scenario: str
+    basis: Literal["filed", "derived", "assumed"]
+    detail: str
 
 
 @dataclass(frozen=True)
@@ -650,6 +746,10 @@ class Template:
     # Held here so the worksheet builds the same quotient the page prints,
     # rather than each engine being told which two lines a margin is of.
     ratio_of: tuple[int, int] = ()
+    # The balance a stock starts from, for the templates that chart one. It is
+    # the single figure a level chart cannot derive - every level after it is a
+    # running sum - so it belongs to the template rather than to a renderer.
+    opening: float | None = None
     # XY templates: the points, and the two axes they are plotted against.
     # A point is not a tier and not a category, so it gets its own field rather
     # than being forced into either.
@@ -658,6 +758,17 @@ class Template:
     # (measure, unit) for the channel that carries neither axis - a bubble's
     # area. Named here because it is the chart's third measure, not decoration.
     size_legend: tuple[str, str] | None = None
+    # The categorical classes an XY chart's points fall into, in legend order.
+    # Order is not alphabetical and not the palette's: the accent ramp was
+    # sampled from this very chart, so this is the order the sampler walked in.
+    groups: Sequence["Group"] = field(default_factory=tuple)
+    # The iso-curves an XY chart draws, where its message is about a product of
+    # its two axes.
+    iso_curves: "IsoCurves | None" = None
+    # (entity, scenario) pairs whose marker is drawn but whose label is not.
+    # A fact about the page rather than the figures - two labels in one place
+    # are unreadable - but both renderers must suppress the same ones.
+    unlabelled: frozenset = field(default_factory=frozenset)
     # Stacked-column panels, for the structure templates. Held separately from
     # ``tiers`` because a panel is not a band of one chart - it is a chart, and
     # C01 has three of them sharing a scale.
@@ -672,10 +783,45 @@ class Template:
     # the reference's way and a uniform way - the rosters reconcile exactly,
     # so neither is a different dataset.
     panel_grids: dict = field(default_factory=dict)
+    # The absolute figures behind a small-multiples grid, by panel key and in
+    # panel order. The tiers carry each panel's variance from the mean, which is
+    # what gets drawn; these are what gets typed, and the worksheet derives the
+    # variances from them so a corrected figure moves its panel and the average
+    # together.
+    panel_values: dict = field(default_factory=dict)
     annotations: Sequence[Annotation] = field(default_factory=tuple)
     comments: Sequence[Comment] = field(default_factory=tuple)
     source_ref: str = ""
     notes: Sequence[str] = field(default_factory=tuple)
+    # Where each scenario's figures came from. Empty on the recreation, whose
+    # every figure is transcribed from one published rendering and says so once
+    # on the Read me - there is nothing per-scenario to distinguish. A workbook
+    # built from filings needs it, because there the scenarios differ in kind:
+    # actuals are reported and plans are constructed.
+    provenance: Sequence["SourceNote"] = field(default_factory=tuple)
+    # Value-axis bounds per tier key, **as fractions of the tier's span**.
+    #
+    # The scale block divides every plotted value by its group's span, so the
+    # series always land in 0..1 whatever the figures are worth. The axis has to
+    # be expressed the same way or the two disagree. The layouts declare theirs
+    # in data units instead - 230 kEUR for C03A's measure - and those are
+    # divided by the live span, which only lands in the right place when the
+    # span happens to be the one they were measured against. On figures a
+    # hundred times larger the axis comes out a hundred times too small, every
+    # bar exceeds it, and Excel draws them all at full height: a chart that
+    # reads as flat while the data underneath it varies fourfold.
+    #
+    # Declared here rather than in the layout because a fraction of a span is a
+    # fact about *this* data, and because it leaves the recreation's own
+    # declarations untouched.
+    tier_bounds: dict = field(default_factory=dict)
+
+    def basis_of(self, scenario: str) -> str:
+        """How this scenario's typed figures came to exist, or "" if unstated."""
+        for note in self.provenance:
+            if note.scenario == scenario:
+                return note.basis
+        return ""
 
     def __post_init__(self) -> None:
         keys = [t.key for t in self.tiers]
@@ -711,6 +857,13 @@ class Template:
             if row.label == label:
                 return row
         raise KeyError(f"{self.id}{self.variant} has no summary row {label!r}")
+
+    def accent_of(self, group: str) -> int:
+        """The accent ramp index for one categorical class of points."""
+        for g in self.groups:
+            if g.name == group:
+                return g.accent
+        raise KeyError(f"{self.id}{self.variant} has no group called {group!r}")
 
     def tier(self, key: str) -> Tier:
         for t in self.tiers:
@@ -3238,6 +3391,7 @@ C08H = Template(
     ),
     categories=C08H_QUARTERS,
     category_scenarios=C08H_SCENARIOS,
+    opening=C08H_OPENING,
     tiers=(
         Tier(key="change", label="Inventory change", kind="measure",
              number_format="{:+,.0f}",
@@ -3461,6 +3615,7 @@ C10D = Template(
     # What a bubble's area counts. The legend prints it as its heading, which is
     # where the chart's third unit is stated.
     size_legend=("Net sales", "mEUR"),
+    unlabelled=frozenset(C10D_UNLABELLED),
     source_ref="template-refs/C10_10D.png",
     notes=(
         "Nine business units drawn twice and two December acquisitions drawn "
@@ -3880,6 +4035,9 @@ C09C = Template(
     tiers=(),
     points=C09C_POINTS,
     axes=C09C_AXES,
+    groups=tuple(Group(name, C09C_ACCENT[name]) for name in C09C_LINES),
+    iso_curves=IsoCurves(levels=C09C_ISO_PROFIT, segment=C09C_SEGMENT,
+                         group=C09C_MESSAGE_LINE, count=C09C_MESSAGE_COUNT),
     source_ref="template-refs/C09_09C.png",
     notes=(
         "149 products measured off the reference render; none of C09's "
@@ -4102,6 +4260,7 @@ def _c11a_tier(key: str, label: str, unit: str, values: Sequence[float],
 
 
 C11A_TREE = TreeSpec(
+    scale_px=C11A_SCALE_PX,
     nodes=(
         # Column 0 is the result the page is about, and the tree reads right to
         # left: the base measures on the right combine into the two ratios, and
@@ -4556,6 +4715,7 @@ C13D = Template(
     category_scenarios=C13D_SCENARIOS,
     tiers=tuple(_c13d_tier(key) for key in C13D_ABSOLUTE) + (C13D_REFERENCE_TIER,),
     panel_grids={"reference": C13D_GRID_REFERENCE, "uniform": C13D_GRID_UNIFORM},
+    panel_values=C13D_ABSOLUTE,
     annotations=(Annotation(kind="oval", target=("berlin", 11)),),
     source_ref="template-refs/C13_13D.png",
     notes=(

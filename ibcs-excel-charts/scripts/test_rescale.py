@@ -53,6 +53,12 @@ except ImportError:                                           # noqa: BLE001
     win32 = None
 
 import ibcs_data as D
+
+# Which dataset built the workbook under test. The declared axis bounds live on
+# the templates, so a workbook built from another dataset has to be checked
+# against that one - otherwise this compares the picture on the page with the
+# intentions of a different set of numbers.
+DATASET = D
 import ibcs_layout as L
 import ibcs_paths as P
 
@@ -200,6 +206,22 @@ def check_tier_sheets(wb, excel, names, simple: bool = False) -> list[str]:
         for spec in layout.tiers:
             if not spec.scale_group:
                 continue                 # clips rather than scales; see below
+            template = DATASET.TEMPLATES.get(name)
+            if template is not None and spec.key in template.tier_bounds:
+                # Bounds declared as fractions of the span are already in the
+                # form the axis is set in, so multiplying by the span would
+                # compare a fraction against a figure in data units. What is
+                # asserted instead is that the axis is the fraction declared -
+                # the same property, in the units it was declared in.
+                want_lo, want_hi = template.tier_bounds[spec.key]
+                axis = sheet.ChartObjects(f"tier_{spec.key}").Chart.Axes(XL_VALUE)
+                for edge, got, want in (("bottom", axis.MinimumScale, want_lo),
+                                        ("top", axis.MaximumScale, want_hi)):
+                    if abs(got - want) > 5e-6:
+                        failures.append(
+                            f"{name}/{spec.key}: the axis {edge} is {got:.6f}, "
+                            f"not the {want:.6f} fraction the template declares")
+                continue
             span = sheet.Cells(layout.first_row,
                                layout.col[f"span_{spec.scale_group}"]).Value
             axis = sheet.ChartObjects(f"tier_{spec.key}").Chart.Axes(XL_VALUE)
@@ -319,7 +341,12 @@ def check_structure_sheets(wb, excel, names) -> list[str]:
     failures: list[str] = []
     for name in names:
         sheet = wb.Sheets(name)
-        layout, t = L.STRUCTURE_LAYOUTS[name], D.TEMPLATES[name]
+        # From the dataset that built the workbook, not from the recreation.
+        # A second dataset names its panels for its own data - "premium" rather
+        # than "channel" - so looking them up in ibcs_data finds none and the
+        # sheet is reported as drawing nothing at all.
+        layout = L.STRUCTURE_LAYOUTS[name]
+        t = DATASET.TEMPLATES.get(name) or D.TEMPLATES[name]
         tallest = max(panel.total(i) for panel in t.structure_panels
                       for i in range(len(panel.categories))
                       if not (layout.horizontal and i < len(t.rows)
@@ -348,7 +375,9 @@ def check_structure_sheets(wb, excel, names) -> list[str]:
                 failures.append(
                     f"{name}/{key}: the axis top times the span is "
                     f"{top * span:.6f}, not the {maximum:g} the panels share")
-        if len({round(top, 12) for _k, top in tops}) != 1:
+        # With no panels there is nothing to compare, and saying they are "on
+        # different scales" describes a list that is empty.
+        if tops and len({round(top, 12) for _k, top in tops}) != 1:
             failures.append(
                 f"{name}: the panels are on different scales - "
                 + ", ".join(f"{k} {v:.6f}" for k, v in tops))
@@ -447,8 +476,11 @@ def _run_once(book: Path) -> int:
         try:
             simple = is_simple_book(wb)
             present = {sheet.Name for sheet in wb.Sheets}
+            # "Read me" and "Sources" are cover sheets, not templates. Counting
+            # Sources as one made a two-sheet workbook report three.
+            templates = present - {"Read me", "Sources"}
             print(f"  {'simple' if simple else 'complex'} workbook, "
-                  f"{len(present) - 1} template sheets")
+                  f"{len(templates)} template sheets")
             for title, fn, names in (
                     ("tier stack", check_tier_sheets,
                      ["C03A", "C04A", "C05X", "C06F", "C12A"]),
@@ -491,7 +523,13 @@ def main(argv: list[str]) -> int:
     if win32 is None:
         print("error: pywin32 is not installed", file=sys.stderr)
         return 1
-    book = Path(argv[1]) if len(argv) > 1 else DEFAULT_BOOK
+    global DATASET
+    args = [a for a in argv[1:] if not a.startswith('--')]
+    for a in argv[1:]:
+        if a.startswith('--data='):
+            import importlib
+            DATASET = importlib.import_module(a.split('=', 1)[1])
+    book = Path(args[0]) if args else DEFAULT_BOOK
     if not book.exists():
         print(f"error: {book} not found - build it first", file=sys.stderr)
         return 1

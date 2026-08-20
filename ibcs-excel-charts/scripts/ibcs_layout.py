@@ -661,7 +661,13 @@ IMPACT_SPLIT_FORMULAS = {
 
 TIER_FORMULAS = {
     "var_abs": "={measure}{r}-{ref}{r}",
-    "var_rel": "=IF({ref}{r}=0,NA(),({measure}{r}-{ref}{r})/{ref}{r}*100)",
+# A percentage change is not meaningful when the thing it is measured against
+# is negative or zero. Dividing by a signed negative base gets the direction
+# backwards: Progressive's other revenues went from -866 to +1,578 - a
+# recovery - and the quotient reads -282%, drawn red and pointing the wrong
+# way. NA() is how the sheet says the question does not apply; the absolute
+# variance beside it still carries the movement, correctly signed.
+    "var_rel": "=IF({ref}{r}<=0,NA(),({measure}{r}-{ref}{r})/{ref}{r}*100)",
     "meas_ac": '=IF(${scenario}{r}="AC",${measure}{r},NA())',
     "meas_fc": '=IF(${scenario}{r}="AC",NA(),${measure}{r})',
     "abs_up": "=IF(${var_abs}{r}>0,${var_abs}{r},NA())",
@@ -831,7 +837,7 @@ C03A = SheetLayout(
 
 C04A_FORMULAS = {
     "ref": "={measure}{r}-{var_abs}{r}",
-    "var_rel": "=IF({ref}{r}=0,NA(),{var_abs}{r}/{ref}{r}*100)",
+    "var_rel": "=IF({ref}{r}<=0,NA(),{var_abs}{r}/{ref}{r}*100)",
     **SPLIT_FORMULAS,
 }
 
@@ -1010,7 +1016,7 @@ C12A_COLUMNS = (
 # per row by ``waterfall_formulas`` below, because they depend on the row kind.
 C12A_FORMULAS = {
     "var_abs": "={ac}{r}-{py}{r}",
-    "var_rel": "=IF({py}{r}=0,NA(),({ac}{r}-{py}{r})/{py}{r}*100)",
+    "var_rel": "=IF({py}{r}<=0,NA(),({ac}{r}-{py}{r})/{py}{r}*100)",
     # What the relative tier prints: the value that was measured, and - where
     # the bar had to be cut to fit the panel - the triangles saying so. IBCS
     # varies the count with the size of the overrun rather than printing one
@@ -1834,6 +1840,17 @@ class StructureLayout:
     # A band below this share of the axis gets no label. Matches the SVG's
     # pixel test, and reproduces which figures the reference leaves off.
     min_label_fraction: float = 0.03
+    # Points per character in a band label, for deciding whether a number
+    # fits where it would be drawn. Arial 9 runs a shade under 5pt a digit;
+    # the point is to be close, not exact - a threshold that is out by a
+    # character hides one label that would have fitted, which is a far
+    # cheaper mistake than drawing one that gets sliced in half.
+    label_char_width: float = 5.0
+    # What share of a panel's width the bars actually get. The category names
+    # down the side take the rest, so measuring a band against the full chart
+    # width overstates the room it has by about an eighth - enough to keep a
+    # label that then gets sliced by the total drawn at the bar tip.
+    plot_fraction: float = 0.88
     # Bars rather than columns. A horizontal structure chart also has to leave
     # its subtotal rows out of the chart: they are swatch-and-figure legend rows
     # and a bar chart cannot draw one.
