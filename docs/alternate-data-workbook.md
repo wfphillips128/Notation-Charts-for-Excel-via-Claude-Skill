@@ -417,8 +417,22 @@ all because of its external dependency.
 
 > **Decided 2026-08-21: the website keeps its own images.**
 > `render-site-svgs.py` continues to carry its own substituted figures for
-> C03A, C01A and T04A, and is not repointed at `ibcs_data_alt`. The paragraph
-> below is the argument that was made for repointing it; it did not win.
+> C03A, C01A and T04A, and is not repointed at `ibcs_data_alt`.
+>
+> The website kept its original images, with an indicator that they contain
+> synthetic data. The decision was made because the charts were visually
+> attractive.
+>
+> The indicator is already in place three ways: the entity is named *Sample
+> Mutual Insurance*, each image carries a `· synthetic figures` caption on the
+> page, and the SVGs take `FOOTER_OWN_DATA` rather than the recreation footer.
+> So the drift this section warns about cannot mislead a reader — nobody can
+> mistake these three pictures for the named insurer's real filings in the
+> workbook beside them, which was the actual risk.
+>
+> `render-site-svgs.py` carries the same decision in its own header, with the
+> instruction not to "fix" it by importing the dataset. The paragraph below is
+> the argument that was made for repointing it; it did not win.
 
 `scripts/render-site-svgs.py` in the `edgewisedata` website repo currently owns
 substituted data for three templates and generates the images that site publishes.
