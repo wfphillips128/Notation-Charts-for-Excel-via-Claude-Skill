@@ -166,6 +166,11 @@ class Row:
     prefix: str = ""          # the +/-/= the reference prints before the label
     indent: int = 0
     spans: int | str | None = None
+    # Which two rows this ratio divides, when a statement carries more than
+    # one. ``Template.ratio_of`` names a single pair, which is all the
+    # reference needs - an insurer's statement carries three ratios and they
+    # divide different lines.
+    ratio_of: tuple[int, int] | None = None
 
     @property
     def higher_is_better(self) -> bool:
@@ -815,6 +820,11 @@ class Template:
     # fact about *this* data, and because it leaves the recreation's own
     # declarations untouched.
     tier_bounds: dict = field(default_factory=dict)
+    # Bar geometry for the table templates that draw one, keyed by tier key.
+    # Overrides the layout's, which declares pixels per kEUR - a ruler measured
+    # against the reference's figures, and wrong by three orders of magnitude
+    # on anyone else's.
+    panel_geometry: dict = field(default_factory=dict)
 
     def basis_of(self, scenario: str) -> str:
         """How this scenario's typed figures came to exist, or "" if unstated."""

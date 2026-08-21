@@ -1409,11 +1409,46 @@ def c05x_formulas(layout: "SheetLayout", template, index: int, row: int,
               if k == "category"]
     m0, m1 = months[0], months[-1]
 
+    # Which scenario the bridge walks from. The template says so - its
+    # waterfall tier names the reference it is measured against - and this used
+    # to be hard-coded to PL. A bridge from plan is only the right picture when
+    # plan and actual are close: Progressive earns about three times its target
+    # margin, so a walk from plan travels more than twice its own starting
+    # height, and a shared-ruler measure axis dragged out to hold it leaves the
+    # columns tiny in a field of white. Bridging from prior year instead is the
+    # same notation over a movement of the size this one was drawn for.
+    bridge = next((tier.reference for tier in template.tiers
+                   if tier.kind == "waterfall" and tier.reference), "PL")
+
     def total_cell(label: str) -> str:
+        """The measure cell of a summary row named outright.
+
+        Correct where a `span` names its two ends: those are labels by
+        definition, and the template chooses them itself.
+        """
         for j, srow in enumerate(template.summary_rows):
             if srow.label == label:
                 return f"${L['measure']}${layout.row_of(template, 'summary', j)}"
-        raise KeyError(label)
+        raise KeyError(
+            f"{layout.template_id}: no summary row is called {label!r}")
+
+    def scenario_cell(scenario: str) -> str:
+        """The measure cell of the summary row that holds this scenario.
+
+        Found by scenario, not by label. ``variance_ends`` above already
+        learned this: matching a summary row by name works only while the rows
+        happen to be called what the reference calls them, and "2025 PL" is a
+        fact about one year of one company's figures rather than about the
+        template. Asked for by name, this raised KeyError on the first sheet
+        built from anything else.
+        """
+        for j, srow in enumerate(template.summary_rows):
+            if srow.stack and srow.stack[0][0] == scenario:
+                return f"${L['measure']}${layout.row_of(template, 'summary', j)}"
+        raise KeyError(
+            f"{layout.template_id}: no summary row carries a {scenario} "
+            f"total, and the closing column is measured against it - add a "
+            f"Summary whose stack is (({scenario!r}, total),)")
 
     blanks = ("bar_py", "bar_pl", "bar_ac", "bar_fc")
     zeros = ("wf_up_ac", "wf_dn_ac", "wf_up_fc", "wf_dn_fc")
@@ -1470,13 +1505,23 @@ def c05x_formulas(layout: "SheetLayout", template, index: int, row: int,
         return out
 
     scenario = srow.stack[0][0]
-    if scenario == "PY":
-        out["bar_py"] = f"={L['measure']}{row}"
-        out["wf_level"] = "=0"
-    elif scenario == "PL":
-        out["bar_pl"] = f"={L['measure']}{row}"
-        # The plan column seeds the bridge: this is where the walk starts.
-        out["wf_level"] = f"={L['measure']}{row}"
+    if scenario in ("PY", "PL"):
+        out["bar_py" if scenario == "PY" else "bar_pl"] = f"={L['measure']}{row}"
+        # The opening column that holds the bridge's own reference seeds it;
+        # the other one is drawn and left out of the walk. The first month
+        # reads its start from the row directly above, so the seeding column
+        # has to be the last of the opening pair - checked rather than assumed,
+        # because a silent zero there sends the whole bridge to the floor.
+        seeds = scenario == bridge
+        if seeds:
+            openings = [s for s in template.summary_rows if s.before]
+            if openings and openings[-1] is not srow:
+                raise ValueError(
+                    f"{layout.template_id}: the bridge walks from {bridge}, so "
+                    f"the {bridge} opening column must be the last one before "
+                    f"the categories - {openings[-1].label!r} is currently "
+                    f"there. Reorder Template.summary_rows.")
+        out["wf_level"] = f"={L['measure']}{row}" if seeds else "=0"
     else:
         # The closing column, split by scenario over the monthly block. Side by
         # side rather than stacked - see the note at the top of this section.
@@ -1484,13 +1529,13 @@ def c05x_formulas(layout: "SheetLayout", template, index: int, row: int,
             out[key] = (f'=SUMIF(${L["scenario"]}${m0}:${L["scenario"]}${m1},'
                         f'"{scen}",${L["measure"]}${m0}:${L["measure"]}${m1})')
         out["wf_level"] = f"={L['wf_level']}{row - 1}"
-        out["var_rel"] = (f"=IF({total_cell('2025 PL')}=0,NA(),"
-                          f"{L['var_abs']}{row}/{total_cell('2025 PL')}*100)")
+        out["var_rel"] = (f"=IF({scenario_cell(bridge)}<=0,NA(),"
+                          f"{L['var_abs']}{row}/{scenario_cell(bridge)}*100)")
         out["rel_up"] = f"=IF({L['var_rel']}{row}>0,{L['var_rel']}{row},NA())"
         out["rel_dn"] = f"=IF({L['var_rel']}{row}<0,{L['var_rel']}{row},NA())"
         out["rel_up_len"] = f"=IF({L['var_rel']}{row}>0,{L['var_rel']}{row},0)"
         out["rel_dn_len"] = f"=IF({L['var_rel']}{row}<0,-{L['var_rel']}{row},0)"
-        out["var_abs"] = f"={L['measure']}{row}-{total_cell('2025 PL')}"
+        out["var_abs"] = f"={L['measure']}{row}-{scenario_cell(bridge)}"
     return out
 
 
@@ -2124,7 +2169,24 @@ class TreeLayout:
     def first_row(self) -> int:
         return self.title_rows + 2
 
-    def scale_of(self, group: str) -> float:
+    def scale_of(self, group: str, template=None) -> float:
+        """Points per unit for one scale group.
+
+        A template may carry its own, and does when its figures are not the
+        magnitude the layout was measured for: a scale of three points per unit
+        draws a box a hundred and sixty points tall for a reference in the
+        hundreds, and a quarter of a mile tall for premiums in the tens of
+        thousands.
+
+        The template declares it in **pixels**, because that is the unit the
+        SVG engine draws in and one number is better than two; a point is
+        three-quarters of a pixel, which is the same conversion this layout's
+        own constants are written with.
+        """
+        tree = getattr(template, "tree", None)
+        if tree is not None and getattr(tree, "scale_px", None):
+            if group in tree.scale_px:
+                return tree.scale_px[group] * 0.75
         try:
             return self.points_per_unit[group]
         except KeyError:

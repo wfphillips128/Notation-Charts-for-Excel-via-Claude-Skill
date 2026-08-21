@@ -278,8 +278,21 @@ def check_table_sheets(wb, excel, names) -> list[str]:
     failures: list[str] = []
     for name in names:
         sheet = wb.Sheets(name)
-        layout, t = L.table_layout_for(name), D.TEMPLATES[name]
-        if not layout.panels:
+        layout = L.table_layout_for(name)
+        t = DATASET.TEMPLATES.get(name) or D.TEMPLATES[name]
+        # The template's own geometry where it declares any: the layout's is
+        # keyed by the reference's tier names and scaled in pixels per kEUR,
+        # so on another dataset both the key and the ruler are wrong. Reading
+        # the layout's here looked for a chart called panel_dpl_november on a
+        # sheet that draws panel_dpl_ytd.
+        panels = {**layout.panels, **t.panel_geometry}
+        # Merging leaves the layout's keys standing beside the template's, and
+        # a template that renames its tiers renames its charts with them.
+        # panel_tiers is what the renderer actually draws, so it is what gets
+        # checked.
+        if t.panel_tiers:
+            panels = {k: v for k, v in panels.items() if k in t.panel_tiers}
+        if not panels:
             continue                     # a table of numbers draws no bars
 
         spans, rates = {}, {}
@@ -289,7 +302,7 @@ def check_table_sheets(wb, excel, names) -> list[str]:
             if isinstance(caption, str) and caption.startswith("span "):
                 spans[caption[5:]] = sheet.Cells(layout.first_row, c).Value
 
-        for key, geometry in layout.panels.items():
+        for key, geometry in panels.items():
             axis = sheet.ChartObjects(f"panel_{key}").Chart.Axes(XL_VALUE)
             span = spans.get(geometry.scale_group, 1.0)
             for edge, got, want in (("bottom", axis.MinimumScale * span,
@@ -319,7 +332,7 @@ def check_table_sheets(wb, excel, names) -> list[str]:
             cell.Value = cell.Value * FACTOR
         recalc(excel)
 
-        for key in layout.panels:
+        for key in panels:
             chart = sheet.ChartObjects(f"panel_{key}").Chart
             axis = chart.Axes(XL_VALUE)
             lo, hi = axis.MinimumScale, axis.MaximumScale
@@ -420,6 +433,27 @@ def check_line_sheets(wb, excel, names) -> list[str]:
             if chart_name == "c08_change":
                 # Declares no bounds: Excel fits it, so it already follows its
                 # data and there is nothing to divide.
+                continue
+            # Same distinction the tier check draws. A template may declare
+            # its bounds already as fractions of the span, in which case the
+            # axis *is* the declaration and multiplying by the span would
+            # compare a fraction against a figure in data units.
+            template = DATASET.TEMPLATES.get(name)
+            # Which key the renderer looks the bounds up under. The single
+            # combo chart declares "line"; C08H's pair share one key so they
+            # cannot end up on two rulers. Keyed off the chart name because
+            # that is what the renderer names them.
+            key = "line" if chart_name == "line_chart" else "level"
+            declared = (template.tier_bounds.get(key)
+                        if template is not None else None)
+            if declared is not None:
+                want_lo, want_hi = declared
+                for edge, got, want in (("bottom", axis.MinimumScale, want_lo),
+                                        ("top", axis.MaximumScale, want_hi)):
+                    if abs(got - want) > 5e-6:
+                        failures.append(
+                            f"{name}/{chart_name}: the axis {edge} is "
+                            f"{got:.6f}, not the {want:.6f} declared")
                 continue
             got = axis.MaximumScale * span
             if abs(got - layout.maximum) > 5e-6:

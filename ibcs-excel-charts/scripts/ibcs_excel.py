@@ -47,6 +47,7 @@ import dataclasses as dc
 import shutil
 import math
 import traceback
+import re
 import sys
 import tempfile
 from pathlib import Path
@@ -485,7 +486,15 @@ def write_data(sheet, t: D.Template, layout: L.SheetLayout) -> tuple[int, int]:
             # as one block paints a constructed figure in the colour that means
             # reported. That is the exact failure this shading exists to
             # prevent, so it cannot be done at column granularity.
-            if column.key == "ref":
+            # Which scenario's provenance governs this column.
+            #
+            # A variance column belongs to the scenario it is measured
+            # *against*, not to the period it sits in: a gap to a constructed
+            # plan is itself constructed, however solid the actual beside it.
+            # C04A types the measure and the absolute variance and derives the
+            # plan from them, so the plan is never a typed cell - shading only
+            # a "ref" column left its whole constructed side looking reported.
+            if column.key in ("ref", "var_abs", "var_rel"):
                 cells.Interior.Color = input_fill(t, layout.reference(t))
             else:
                 scenarios = t.category_scenarios
@@ -867,6 +876,27 @@ def _scaled_bounds(sheet, layout: L.SheetLayout, spec: L.TierSpec,
     return lo / span, hi / span
 
 
+def _line_bounds(layout: L.LineLayout, t: D.Template, key: str, span: float,
+                 floor: float = 0.0) -> tuple[float, float]:
+    """One line chart's axis bounds, as fractions of the span it plots against.
+
+    The same shape as ``_scaled_bounds``, and for the same reason. A line sheet
+    divides every plotted row by one span so the columns and the cumulative
+    lines share a ruler; the layout then declares the axis in *data units* and
+    divides that by the live span. The two agree only on the figures the
+    constant was measured against - 24 above an inventory that tops out at 22,
+    and 24/54,521 above a loss reserve that does not, which clamps every series
+    to the frame and draws it flat.
+
+    So a template may declare its bounds already as fractions of its own span,
+    the form this block works in everywhere else. Being fractions they hold for
+    any figures at all, which is what a workbook meant to be pasted over needs.
+    """
+    if key in t.tier_bounds:
+        return t.tier_bounds[key]
+    return floor / span, layout.maximum / span
+
+
 def add_tier(sheet, t: D.Template, layout: L.SheetLayout, spec: L.TierSpec,
              chart_left: float, first: int, last: int):
     """One tier as its own ChartObject, aligned to the others by construction."""
@@ -1053,6 +1083,14 @@ def _scenario_measure_series(chart, sheet, t, layout, cats, first, last) -> None
         # block. Hand-rolled labels print the series' own value, and a series
         # plotting a fraction of a span prints the fraction.
         _stack_labels(series, "#,##0", sheet, layout, key, first, last)
+
+    # The cluster the layout declares, which this builder never applied - so
+    # C05X fell back to Excel's defaults, 150% gaps and no overlap. Two
+    # consequences, and the docstring above promises against both: the bars
+    # came out a third of the width the sheet has room for, and the plan stood
+    # *beside* the actual rather than behind it, which is the notation this
+    # template exists to demonstrate.
+    _set_cluster(chart, layout, "measure")
 
 
 def _scenario_bridge_series(chart, sheet, t, layout, cats, first, last) -> None:
@@ -1837,6 +1875,24 @@ def verify_axis_containment(sheet, t: D.Template) -> list[str]:
     return problems
 
 
+def _interleaves_charts(t: D.Template) -> bool:
+    """Does this family put charts among its data rather than beside it?
+
+    A table with integrated bars sets them *in* its columns, and a panel grid
+    spans the whole page; in both, a chart to the left of some text is the
+    design and not a collision. Every other family puts its charts in a zone to
+    the right, and there the two must never overlap.
+
+    Asked of the template, which knows, rather than guessed from how far right
+    the leftmost chart happens to sit. That guess was a threshold of 200pt, and
+    it held only while a table's bars started left of it: give T04A a label
+    column wide enough for "Losses and loss adjustment expense" and its first
+    bar lands at 375pt, whereupon the sheet is judged by a rule written for a
+    different shape.
+    """
+    return bool(t.panel_tiers or t.panel_grids)
+
+
 def contain_data_zone_text(sheet, t: D.Template) -> None:
     """Bound every long string in the data zone to the data zone.
 
@@ -1853,9 +1909,9 @@ def contain_data_zone_text(sheet, t: D.Template) -> None:
     charts = list(sheet.ChartObjects())
     if not charts:
         return
-    boundary = min(c.Left for c in charts)
-    if boundary < 200:          # tables and panel grids interleave by design
+    if _interleaves_charts(t):
         return
+    boundary = min(c.Left for c in charts)
 
     # The last column ending inside the zone, from the finished widths.
     last = 1
@@ -1908,16 +1964,11 @@ def verify_text_containment(sheet, t: D.Template) -> list[str]:
     charts = list(sheet.ChartObjects())
     if not charts:
         return []
-    boundary = min(c.Left for c in charts)
-
-    # Only the families that actually split the sheet into two zones. A table
-    # sets its bars *among* its columns and a panel grid spans the whole page:
-    # in both, a chart to the left of some text is the design rather than a
-    # collision, and measuring them against this rule reports the layout working
-    # as intended. The split families put their charts a long way right, which
-    # is what this threshold recognises.
-    if boundary < 200:
+    # Only the families that actually split the sheet into two zones - see
+    # _interleaves_charts.
+    if _interleaves_charts(t):
         return []
+    boundary = min(c.Left for c in charts)
 
     problems: list[str] = []
     last_row = sheet.Cells(sheet.Rows.Count, 1).End(XL_UP).Row
@@ -2362,8 +2413,9 @@ def _write_table_body(sheet, t: D.Template, layout: L.TableLayout) -> None:
                     # A margin is a ratio of two rows of its own column, so it
                     # is a formula like any other total - retype a revenue line
                     # and the margin follows it.
-                    top = layout.first_row + t.ratio_of[0]
-                    bottom = layout.first_row + t.ratio_of[1]
+                    pair = row.ratio_of or t.ratio_of
+                    top = layout.first_row + pair[0]
+                    bottom = layout.first_row + pair[1]
                     cell.Formula = (f"=IF({letter}{bottom}=0,NA(),"
                                     f"{letter}{top}/{letter}{bottom}*100)")
                 elif row.kind == "subtotal":
@@ -2385,7 +2437,13 @@ def _write_table_body(sheet, t: D.Template, layout: L.TableLayout) -> None:
                 if tier.kind == "variance_abs":
                     cell.Formula = f"={ac}{r}-{ref}{r}"
                 else:
-                    cell.Formula = (f"=IF({ref}{r}=0,NA(),"
+                    # <=0, not =0. A percentage change from a negative
+                    # base is not meaningful - it draws the recovery of a
+                    # loss-making line as a large adverse variance, pointing
+                    # the wrong way in the wrong colour. The same guard C12A's
+                    # three formulas carry; this is the third place it was
+                    # needed and the only shared one.
+                    cell.Formula = (f"=IF({ref}{r}<=0,NA(),"
                                     f"({ac}{r}-{ref}{r})/{ref}{r}*100)")
 
         _row_rules(sheet, t, layout, i, len(plan))
@@ -2612,7 +2670,7 @@ def _write_panel_scaffolding(sheet, t: D.Template, layout: L.TableLayout) -> dic
     spans: dict[str, str] = {}
     groups: dict[str, list[str]] = {}
     for column, entry in _panel_columns_of(t, layout):
-        geometry = layout.panels[entry.tier.key]
+        geometry = _panels(layout, t)[entry.tier.key]
         if geometry.scale_group:
             groups.setdefault(geometry.scale_group, []).append(
                 f"{L.col_letter(column)}{layout.first_row}:"
@@ -2634,7 +2692,7 @@ def _write_panel_scaffolding(sheet, t: D.Template, layout: L.TableLayout) -> dic
 
     for column, entry in _panel_columns_of(t, layout):
         letter = L.col_letter(column)
-        geometry = layout.panels[entry.tier.key]
+        geometry = _panels(layout, t)[entry.tier.key]
         divide = f"/{spans[geometry.scale_group]}" if geometry.scale_group else ""
 
         # The invisible labeller plots the value and shows the number. Once the
@@ -2715,7 +2773,7 @@ def _add_panel_charts(sheet, t: D.Template, layout: L.TableLayout,
     last = layout.last_row(t)
 
     for column, entry in _panel_columns_of(t, layout):
-        geometry = layout.panels[entry.tier.key]
+        geometry = _panels(layout, t)[entry.tier.key]
         anchor = sheet.Cells(layout.first_row, column)
         obj = sheet.ChartObjects().Add(
             anchor.Left, anchor.Top, sheet.Columns(column).Width,
@@ -3003,6 +3061,22 @@ def _structure_subtotal(t: D.Template, row: int, index: int) -> str:
         f"{L.col_letter(2 + p[0])}{row}" if len(p) == 1
         else f"SUM({L.col_letter(2 + p[0])}{row}:{L.col_letter(2 + p[-1])}{row})"
         for p in parts)
+
+
+def _panels(layout, template) -> dict:
+    """The bar geometry for a table's panels, template first.
+
+    Same seam as ``tier_bounds`` and ``TreeSpec.scale_px``: the layout's
+    geometry carries a scale in pixels per kEUR, which is a fact about the
+    figures it was measured against. A template may declare its own.
+    """
+    panels = {**layout.panels, **template.panel_geometry}
+    # A template that renames its tiers renames its panels with them, and the
+    # layout's old keys would otherwise stand beside the new ones. panel_tiers
+    # is the list of what is actually drawn.
+    if template.panel_tiers:
+        return {k: v for k, v in panels.items() if k in template.panel_tiers}
+    return panels
 
 
 def _panel_format(layout, panel: D.StructurePanel) -> str:
@@ -3730,13 +3804,12 @@ def _add_line_chart(sheet, t: D.Template, layout: L.LineLayout, rows: dict,
     chart.ChartGroups(1).Overlap = layout.overlap
     strip_chrome(chart, show_categories=True)
     axis = chart.Axes(XL_VALUE)
-    axis.MinimumScale = 0
-    axis.MaximumScale = layout.maximum / span
+    axis.MinimumScale, axis.MaximumScale = _line_bounds(layout, t, "line", span)
     chart.ChartArea.Format.Fill.Visible = MSO_TRUE
     chart.ChartArea.Format.Fill.Solid()
     chart.ChartArea.Format.Fill.ForeColor.RGB = rgb(S.PAGE["background"])
     chart.ChartArea.Format.Line.Visible = MSO_FALSE
-    return obj
+    return obj, span
 
 
 def verify_line(sheet, t: D.Template, layout: L.LineLayout, rows: dict) -> list[str]:
@@ -3982,8 +4055,11 @@ def _add_c08h_charts(sheet, t: D.Template, layout: L.LineLayout, rows: dict,
         strip_chrome(chart, show_categories=(name == "flows"))
         if name in ("level", "flows"):
             axis = chart.Axes(XL_VALUE)
-            axis.MinimumScale = -8 / span
-            axis.MaximumScale = layout.maximum / span
+            # One key for both charts, not one each: the columns rise into the
+            # stock they add to, so a template that could declare them
+            # separately could also draw them on two rulers by accident.
+            axis.MinimumScale, axis.MaximumScale = _line_bounds(
+                layout, t, "level", span, floor=-8.0)
             _lock_panel_plot(chart, obj.Width - 8, obj.Height - 30)
         chart.ChartArea.Format.Line.Visible = MSO_FALSE
         if transparent:
@@ -4047,14 +4123,19 @@ def build_line_sheet(excel, sheet, template: D.Template) -> tuple[list[str], lis
     rows = _write_line_data(sheet, template, layout)
     excel.Calculate()
     left = sum(sheet.Columns(i).Width for i in range(1, 14)) + layout.chart_gap
-    obj = _add_line_chart(sheet, template, layout, rows, left)
+    obj, span = _add_line_chart(sheet, template, layout, rows, left)
     add_title_block(sheet, template, layout, left, title_top,
                     layout.chart_width)
     excel.Calculate()
 
     problems = verify_line(sheet, template, layout, rows)
-    print(f"\n{layout.template_id}: {len(LINE_SERIES)} series - three column, "
-          f"four line - on one axis to {layout.maximum:,.0f}")
+    # Read back off the chart rather than quoted from the layout: a
+    # template that declares its own bounds does not use layout.maximum
+    # at all, and a log line naming the constant that was overridden is a
+    # small lie in the one place someone looks first.
+    top = obj.Chart.Axes(XL_VALUE).MaximumScale * span
+    print(f"\n{layout.template_id}: {len(LINE_SERIES)} series - three "
+          f"column, four line - on one axis to {top:,.0f}")
     sheet.Range("A1").Select()
     return problems, [obj]
 
@@ -4068,10 +4149,10 @@ def build_table_sheet(excel, sheet, template: D.Template) -> tuple[list[str], li
     for i, entry in enumerate(plan, start=1):
         if entry.kind == "label":
             width = layout.label_width
-        elif entry.tier.key in layout.panels:
+        elif entry.tier.key in _panels(layout, template):
             # As many times wider than a printed column as the reference draws
             # it, so the panels keep the scale they share.
-            width = layout.panel_value_width * layout.panels[entry.tier.key].width_px / 64.0
+            width = layout.panel_value_width * _panels(layout, template)[entry.tier.key].width_px / 64.0
         else:
             width = layout.value_width
         sheet.Columns(i).ColumnWidth = width
@@ -4092,6 +4173,16 @@ def build_table_sheet(excel, sheet, template: D.Template) -> tuple[list[str], li
 
     problems = verify_table(sheet, template, layout)
     problems += verify_panels(sheet, template, layout, objects)
+    # Geometry declared for a tier nothing draws. The sheet builds, the columns
+    # hold the right figures and print them, and the only sign that a bar was
+    # meant to be there is that it is not - so this is said out loud rather
+    # than left to the eye.
+    orphans = sorted(set(template.panel_geometry) - set(template.panel_tiers))
+    if orphans:
+        problems.append(
+            f"{template.id}{template.variant}: panel geometry declared for "
+            f"{orphans} but Template.panel_tiers does not name them, so those "
+            f"columns print their figures instead of drawing them")
     print(f"\n{layout.template_id}: {len(template.rows)} rows x "
           f"{len(plan) - 1} columns, rows {layout.first_row}-"
           f"{layout.last_row(template)}, thresholds on row "
@@ -4796,7 +4887,7 @@ def _add_tree_chart(sheet, t: D.Template, layout: L.TreeLayout,
     n = len(t.categories)
     values = _tree_values(t, node.key)
     low, high = _tree_bounds(values, node.scale_group)
-    per_unit = layout.scale_of(node.scale_group)
+    per_unit = layout.scale_of(node.scale_group, t)
     # The box's height comes from the *raw* range, so a box whose numbers span
     # more is taller - which is how boxes sharing a unit come out sharing a
     # scale. Only the axis is divided; the geometry is untouched.
@@ -5001,16 +5092,22 @@ def _tree_zero_and_split(sheet, t: D.Template, node: D.TreeNode, obj,
     rule.Placement = XL_FREE_FLOATING
     shapes.append(rule)
 
+    # The rule that separates reported periods from forward-looking ones. A
+    # tree of nothing but actuals has no such moment, and asking for the first
+    # scenario change when there is none raises rather than declining - the
+    # third place in this codebase to assume the reference's plan tail exists.
     n = len(t.categories)
-    after = next(j for j in range(1, n)
-                 if t.category_scenarios[j] != t.category_scenarios[j - 1])
-    x = obj.Left + inside_left + inside_w * after / n
-    split = sheet.Shapes.AddLine(x, zero_y - 48.0, x, zero_y + 20.0)
-    split.Name = f"split_{node.key}"
-    split.Line.ForeColor.RGB = rgb("#000000")
-    split.Line.Weight = 0.9
-    split.Placement = XL_FREE_FLOATING
-    shapes.append(split)
+    after = next((j for j in range(1, n)
+                  if t.category_scenarios[j] != t.category_scenarios[j - 1]),
+                 None)
+    if after is not None:
+        x = obj.Left + inside_left + inside_w * after / n
+        split = sheet.Shapes.AddLine(x, zero_y - 48.0, x, zero_y + 20.0)
+        split.Name = f"split_{node.key}"
+        split.Line.ForeColor.RGB = rgb("#000000")
+        split.Line.Weight = 0.9
+        split.Placement = XL_FREE_FLOATING
+        shapes.append(split)
     return shapes
 
 
@@ -5122,11 +5219,23 @@ def verify_tree(t: D.Template, placed: dict, built: dict,
             (node.key, chart.PlotArea.InsideHeight / divisor))
 
     for group, entries in rates.items():
-        want = layout.scale_of(group)
+        want = layout.scale_of(group, t)
         biggest = max(abs(v) for key, _ in entries for v in _tree_values(t, key))
         drawn = {key: biggest * rate for key, rate in entries}
         spread = max(drawn.values()) - min(drawn.values())
-        if spread > 1.0:
+        # Relative, with an absolute floor. What matters is that a figure
+        # carried from one box to another would be *read* wrong, and that
+        # misreading is proportional: three points of disagreement on a box of
+        # four hundred is half a percent, and on a box of forty is eight.
+        #
+        # A flat one-point tolerance is a statement about magnitude - it passes
+        # a reference whose largest figure is three hundred and fails identical
+        # relative precision on one whose largest is eighty thousand, where
+        # Excel cannot place a plot area finely enough to do better.
+        # One percent - still twice as tight as the per-unit check below,
+        # which allows two, and scale-free where a flat point was not.
+        tolerance = max(1.0, 0.01 * max(drawn.values()))
+        if spread > tolerance:
             detail = ", ".join(f"{k} {v:.1f}pt" for k, v in drawn.items())
             problems.append(
                 f"the {group} boxes draw {biggest:g} at different heights "
@@ -5322,7 +5431,7 @@ def build_tree_sheet(excel, sheet, template: D.Template) -> tuple[list[str], lis
     print(f"\n{layout.template_id}: {len(placed)} boxes in "
           f"{len(columns)} tree columns")
     for group, keys in template.tree.groups().items():
-        print(f"    {group:<9} {layout.scale_of(group):7.3f}pt per unit  "
+        print(f"    {group:<9} {layout.scale_of(group, template):7.3f}pt per unit  "
               f"{', '.join(keys)}")
     sheet.Range("A1").Select()
     return problems, list(placed.values())
@@ -5382,7 +5491,12 @@ def _c13_panel_style(t: D.Template):
         label_size=7,
         marker_size=4,
         stem_weight=1.25,
-        divider_after=t.category_scenarios.index("PL"),
+        # Where the actuals stop and a forward scenario begins. A grid drawn
+        # entirely from reported figures has no such moment, and asking a tuple
+        # for the index of a scenario it does not contain raises rather than
+        # declining - which is how a template of fifteen years of actuals failed
+        # to build at all. None is how this says "there is no divider".
+        divider_after=_forward_scenario_at(t),
         divider_colour=(0, 0, 0),
         divider_weight=0.9,
     )
@@ -5555,6 +5669,34 @@ def _reference_panel(sheet, t: D.Template, layout: L.PanelLayout,
     return obj
 
 
+def _panel_period_label(text: str) -> str:
+    """A short category label for a panel's axis.
+
+    A four-digit year is abbreviated to an apostrophe and two digits - what the
+    reference does, and what fits under a panel a quarter the width of a chart.
+    Anything else is left alone.
+
+    The abbreviation used to be an unconditional ``text[2:]``, which is correct
+    only if every category is a year. Given month names it returned the last
+    letter of each: a row reading "n r l t" under fifteen panels, which is not a
+    category axis.
+    """
+    return "'" + text[2:] if re.fullmatch(r"(19|20)\d{2}", text) else text
+
+
+def _forward_scenario_at(t: D.Template) -> int | None:
+    """The category where a forward scenario first appears, or None.
+
+    Plan and forecast are both forward-looking, and either can follow the
+    actuals; the reference happens to use plan, which is not a reason to look
+    only for that one.
+    """
+    for i, scenario in enumerate(t.category_scenarios):
+        if scenario in ("PL", "BU", "FC"):
+            return i
+    return None
+
+
 def build_panel_sheet(excel, sheet, template: D.Template) -> tuple[list[str], list]:
     """One small-multiples template onto one sheet, via the panel-charts skill."""
     try:
@@ -5592,7 +5734,7 @@ def build_panel_sheet(excel, sheet, template: D.Template) -> tuple[list[str], li
         rows=grid.rows, cols=grid.cols, periods=len(template.categories),
         elements=1, kind="pin", sheet=sheet.Name,
         panel_names=names,
-        period_labels=["'" + y[2:] for y in template.categories],
+        period_labels=[_panel_period_label(y) for y in template.categories],
         element_names=["ΔØ %"],
         include_zero=True, nticks=3, title="")
 

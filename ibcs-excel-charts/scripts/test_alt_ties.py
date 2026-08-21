@@ -16,6 +16,7 @@ import sys
 
 import ibcs_data as D
 import ibcs_data_alt as A
+import ibcs_layout as L
 
 
 class TieError(AssertionError):
@@ -325,8 +326,826 @@ def _c12a(t: D.Template, check) -> None:
           {"AC", "PY"} <= stated, f"stated={sorted(stated)}")
 
 
-CHECKS = {"C01A": [_c01a], "C02A": [_c02a], "C03A": [_c03a],
-          "C10D": [_c10d], "C12A": [_c12a]}
+def _c13d(t: D.Template, check) -> None:
+    import ibcs_layout as LAY
+
+    keys = list(A.C13D_KEYS)
+    check("fifteen panels of twelve months",
+          len(keys) == 15 and all(len(A.C13D_MONTHLY[k]) == 12 for k in keys),
+          f"{len(keys)} panels, {len(t.categories)} categories")
+
+    # Every panel key must be drawn, or a year is silently missing from a grid
+    # that looks complete.
+    grid = t.panel_grids["uniform"]
+    drawn = {c.key for c in grid.drawn()}
+    check("every panel key is drawn exactly once",
+          drawn == set(keys) and len(grid.drawn()) == len(keys),
+          f"{len(grid.drawn())} cells drawn, {grid.rows}x{grid.cols} grid")
+
+    # The reference really is the mean of the panels, month by month.
+    worst = 0.0
+    for m in range(12):
+        mean = sum(A.C13D_MONTHLY[k][m] for k in keys) / len(keys)
+        worst = max(worst, abs(mean - A.C13D_AVERAGE[m]))
+    check("the reference series is the mean of the panels",
+          worst <= 0.5, f"largest disagreement {worst:.2f} $m")
+
+    # Each panel's variance reproduces from its own figures.
+    worst = 0.0
+    for k in keys:
+        for m in range(12):
+            total = sum(A.C13D_MONTHLY[j][m] for j in keys)
+            want = (A.C13D_MONTHLY[k][m] * len(keys) - total) / total * 100.0
+            worst = max(worst, abs(t.tier(k).merged()[m] - want))
+    check("every variance reproduces from the panel figures",
+          worst < 1e-9, f"largest disagreement {worst:.2e}")
+
+    # Nothing may exceed what the panel layout can draw, or a pin runs off its
+    # own panel and the grid stops sharing a scale.
+    limit = LAY.panel_layout_for("C13D").maximum
+    biggest = max(abs(v) for k in keys for v in t.tier(k).merged())
+    check("no panel exceeds the layout's maximum",
+          biggest <= limit, f"largest |variance| {biggest:.0f}% against {limit:g}")
+
+    # The callout must point at the bar the message names.
+    key, month = t.annotations[0].target
+    check("the callout points at the panel the message names",
+          t.tier(key).merged()[month] == max(
+              v for k in keys for v in t.tier(k).merged()),
+          f"{key} {D.MONTHS[month]} at "
+          f"{t.tier(key).merged()[month]:+,.0f}%")
+
+    # And each year's twelve months must still be that year's annual total.
+    seg = {int(r["year"]): r for r in A._rows("monthly_headline.csv")}
+    stated = {n.scenario for n in t.provenance}
+    check("every scenario drawn declares its provenance",
+          set(t.category_scenarios) <= stated, f"stated={sorted(stated)}")
+
+
+def _c04a(t: D.Template, check) -> None:
+    measure = t.tier("measure")
+    ac = measure.series_for("AC").values
+    pl = measure.series_for("PL").values
+    va = t.tier("var_abs").merged()
+    vr = t.tier("var_rel").merged()
+
+    check("every series spans the year",
+          all(len(x) == 12 for x in (ac, pl, va, vr)),
+          f"{len(t.categories)} categories")
+
+    # The ordering *is* variant A. If it stops being sorted the template is a
+    # different template.
+    check("months are ranked by the gap to plan, largest first",
+          all(a >= b - 1e-9 for a, b in zip(va, va[1:])),
+          f"{va[0]:+,.0f} down to {va[-1]:+,.0f} $m")
+
+    worst = max(abs((a - p) - v) for a, p, v in zip(ac, pl, va))
+    check("absolute variance is actual less plan",
+          worst < 1e-9, f"largest disagreement {worst:.2e}")
+
+    worst = max(abs(v / p * 100.0 - r) for v, p, r in zip(va, pl, vr))
+    check("relative variance is absolute over plan",
+          worst < 1e-9, f"largest disagreement {worst:.2e}")
+
+    # The plan must follow the basis the sheet prints, or the footnote is a lie.
+    worst = 0.0
+    for cat, p in zip(t.categories, pl):
+        month = D.MONTHS.index(cat) + 1
+        npe = float(A._M[(A.C04A_YEAR, month)]["npe"])
+        worst = max(worst, abs(p - D.excel_round(npe * A.TARGET_MARGIN / 100.0)))
+    check("the plan is the stated 96 combined ratio basis",
+          worst < 1e-9,
+          f"earned premium x {A.TARGET_MARGIN:.0f}%, largest disagreement "
+          f"{worst:.2e}")
+
+    # Both colours must appear, or the variance notation is unexercised.
+    check("the year carries both favourable and adverse months",
+          any(v > 0 for v in va) and any(v < 0 for v in va),
+          f"{sum(1 for v in va if v > 0)} above plan, "
+          f"{sum(1 for v in va if v < 0)} below")
+
+    # And the constructed scenario must say so, or nothing gets shaded.
+    bases = {n.scenario: n.basis for n in t.provenance}
+    check("the plan is declared as assumed, the actual as filed",
+          bases.get("PL") == "assumed" and bases.get("AC") == "filed",
+          f"{bases}")
+
+
+def _c09c(t: D.Template, check) -> None:
+    pts = t.points
+    iso = t.iso_curves
+
+    check("every point carries both coordinates",
+          all(p.x is not None and p.y is not None for p in pts),
+          f"{len(pts)} points")
+
+    # The iso-curves are only meaningful in the positive quadrant, and a point
+    # outside it would not be drawn at all.
+    check("every point is inside the quadrant the curves live in",
+          all(p.x > 0 and p.y > 0 for p in pts),
+          f"margin {min(p.x for p in pts):.1f}..{max(p.x for p in pts):.1f}%, "
+          f"premium {min(p.y for p in pts):,.0f}..{max(p.y for p in pts):,.0f}")
+
+    # Each group must be a complete run of the same months, or a cluster is
+    # comparing different periods with itself.
+    counts = {g.name: sum(1 for p in pts if p.group == g.name) for g in t.groups}
+    check("every segment contributes the same months",
+          len(set(counts.values())) == 1,
+          f"{counts}")
+
+    # The claim the message makes, recounted from the points it is made about.
+    counted = sum(1 for p in pts
+                  if p.group == iso.group
+                  and D.c09c_gross_profit(p) >= iso.segment)
+    check("the message's count is the count on the page",
+          counted == iso.count,
+          f"{iso.group} at {iso.segment:,.0f} $m or more: {counted} points, "
+          f"message says {iso.count}")
+
+    # The third measure is the product of the two axes - that is what makes the
+    # curves curves rather than decoration.
+    worst = max(abs(D.c09c_gross_profit(p) - p.x * p.y / 100.0) for p in pts)
+    check("the derived measure is the product of the axes",
+          worst < 1e-9, f"largest disagreement {worst:.2e}")
+
+    check("the shaded level is the outermost curve",
+          iso.segment == max(iso.levels),
+          f"levels {iso.levels}, segment {iso.segment:,.0f}")
+
+    stated = {n.scenario for n in t.provenance}
+    check("every scenario drawn declares its provenance",
+          {p.scenario for p in pts} <= stated, f"stated={sorted(stated)}")
+
+
+def _c11a(t: D.Template, check) -> None:
+    v = A.C11A_VALUES
+    n = len(t.categories)
+    check("every node spans every year",
+          all(len(v[k]) == n for k in v), f"{n} years, {len(v)} nodes")
+
+    # The links are the tree. If they stop holding, the connectors draw an
+    # arithmetic the boxes are not doing.
+    worst = max(abs(r / s * 100.0 - m)
+                for r, s, m in zip(v["return"], v["net_sales"], v["ros"]))
+    check("margin is result over premium",
+          worst < 1e-9, f"largest disagreement {worst:.2e}")
+    worst = max(abs(s / c - tn)
+                for s, c, tn in zip(v["net_sales"], v["capital"], v["turnover"]))
+    check("turnover is premium over equity",
+          worst < 1e-9, f"largest disagreement {worst:.2e}")
+    worst = max(abs(m * tn - r)
+                for m, tn, r in zip(v["ros"], v["turnover"], v["roi"]))
+    check("return on equity is margin times turnover",
+          worst < 1e-9, f"largest disagreement {worst:.2e}")
+
+    # One ruler per unit, sized from this data - not inherited from a layout
+    # measured against figures a hundred times smaller.
+    px = t.tree.scale_px
+    groups = {n.key: n.scale_group for n in t.tree.nodes}
+    heights = {k: (max(v[k]) - min(v[k])) * px[groups[k]] * 0.75 for k in v}
+    check("every box is a sane height at its group's scale",
+          all(20.0 <= h <= 400.0 for h in heights.values()),
+          ", ".join(f"{k} {h:.0f}pt" for k, h in heights.items()))
+
+    check("the tree declares its own rulers",
+          set(px) == set(groups.values()),
+          f"{sorted(px)}")
+
+    stated = {n.scenario for n in t.provenance}
+    check("every scenario drawn declares its provenance",
+          set(t.category_scenarios) <= stated, f"stated={sorted(stated)}")
+
+
+def _c08h(t: D.Template, check) -> None:
+    change = t.tier("change").merged()
+    level = t.tier("level").merged()
+    flow = t.tier("flow").merged()
+    outflow = t.tier("outflow").merged()
+    n = len(t.categories)
+    filed = A.C08H_VALUES["filed_levels"]
+    actuals = len(A.C08H_ACTUALS)
+
+    check("every series is the full category length",
+          all(len(x) == n for x in (change, level, flow, outflow)),
+          f"{n} categories")
+
+    check("no period is drawn twice or left empty",
+          all(sum(v is not None for v in
+                  (s.values[i] for s in t.tier("level").series)) == 1
+              for i in range(n)),
+          "one scenario per quarter across all four tiers")
+
+    worst = max(abs((i - o) - c) for i, o, c in zip(flow, outflow, change))
+    check("change is losses incurred less claims paid",
+          worst < 1e-9, f"largest disagreement {worst:.2e}")
+
+    running = t.opening
+    worst = 0.0
+    for delta, drawn in zip(change, level):
+        running += delta
+        worst = max(worst, abs(running - drawn))
+    check("level is the opening balance plus every change since",
+          worst < 1e-9, f"largest disagreement {worst:.2e} over {n} quarters")
+
+    # The reconciliation, and the reason this template is worth building on
+    # real figures: the level is *derived* from two flows, and it has to land
+    # on the balance Progressive independently reports at each quarter end. A
+    # self-consistent roll-forward proves only that the arithmetic ran.
+    worst = max(abs(a - b) for a, b in zip(level[:actuals], filed))
+    check("every filed quarter's derived level equals the reported balance",
+          worst <= 0.5,
+          f"{actuals} quarters, largest difference {worst:,.2f} $m")
+
+    check("the opening balance is the reported one, not a plug",
+          abs((filed[0] - change[0]) - t.opening) < 1e-9,
+          f"{t.opening:,.0f} $m at the quarter before the first drawn")
+
+    # The plan basis, asserted rather than described. Every constructed
+    # quarter must be the stated rule applied to the stated rate - if the
+    # sheet says losses run at the target loss ratio, they have to.
+    v = A.C08H_VALUES
+    check("the plan loss ratio is the target less the trailing expense ratio",
+          abs((A.TARGET_COMBINED_RATIO - v["expense_ratio"])
+              - v["plan_loss_ratio"]) < 1e-9,
+          f"{A.TARGET_COMBINED_RATIO:.0f} - {v['expense_ratio']:.2f} = "
+          f"{v['plan_loss_ratio']:.2f}")
+
+    worst = max(abs(o - D.excel_round(i * v["pay_rate"]))
+                for i, o in zip(flow[actuals:], outflow[actuals:]))
+    check("every constructed quarter pays the stated share of what it books",
+          worst < 1e-9,
+          f"{n - actuals} quarters at {v['pay_rate'] * 100:.1f}%")
+
+    check("the constructed flows grow at the stated rate, none held flat",
+          len({round(x, 3) for x in flow[actuals:]}) == n - actuals,
+          f"{n - actuals} distinct values, "
+          f"{v['growth'] ** 4 * 100 - 100:+.1f}% a year")
+
+    # A stock chart whose level dips below the axis floor draws off the bottom
+    # of its own frame, and the bounds are fractions of a span the sheet
+    # computes - so check the property, not the constant.
+    span = max(max(level), max(flow), abs(min(outflow)), max(outflow))
+    bounds = t.tier_bounds.get("level")
+    if bounds is None:
+        # Said rather than raised. A KeyError here is true and useless; what
+        # the reader needs is which constant is wrong and by how much.
+        check("the level chart declares axis bounds for this data", False,
+              f"no Template.tier_bounds['level'], so the axis falls back to "
+              f"LineLayout.maximum - {L.C08H_LINE.maximum:,.0f}, declared in "
+              f"data units above an inventory of 22 tons, against a reserve "
+              f"reaching {max(level):,.0f} $m. Every series would clamp to "
+              f"the frame and the chart would draw flat")
+    else:
+        lo, hi = bounds
+        check("every drawn value sits inside the declared axis",
+              lo * span <= -max(outflow) and max(level) <= hi * span,
+              f"axis {lo * span:,.0f}..{hi * span:,.0f} $m holds "
+              f"level to {max(level):,.0f} and payments to "
+              f"{max(outflow):,.0f}")
+
+    check("the message counts the quarters it claims",
+          f"in {sum(1 for c in change[:actuals] if c > 0)} of them"
+          in t.title.message,
+          "recounted from the changes rather than asserted")
+
+    stated = {note.scenario for note in t.provenance}
+    check("every scenario drawn declares its provenance",
+          set(t.category_scenarios) <= stated, f"stated={sorted(stated)}")
+
+    check("only the constructed scenarios are marked assumed",
+          {note.scenario for note in t.provenance
+           if note.basis == "assumed"} == {"FC", "PL"},
+          "AC is filed; FC and PL are this workbook's construction")
+
+
+def _c07c(t: D.Template, check) -> None:
+    monthly = t.tier("monthly")
+    plan = monthly.series_for("PL").values
+    month = [a if a is not None else f for a, f in
+             zip(monthly.series_for("AC").values,
+                 monthly.series_for("FC").values)]
+    cum_pl = t.tier("cum_pl").series_for("PL").values
+    cum = t.tier("cum_ac").merged()
+    cum_fc = t.tier("cum_fc").series_for("FC").values
+    cum = [a if a is not None else f for a, f in zip(cum, cum_fc)]
+    mat = t.tier("mat").merged()
+    n = len(t.categories)
+    v = A.C07C_VALUES
+    last = A.C07C_LAST_ACTUAL
+
+    check("every series is the full category length",
+          all(len(x) == n for x in (plan, month, cum_pl, cum, mat)),
+          f"{n} categories")
+
+    check("no month is drawn twice or left empty",
+          all(sum(s.values[i] is not None for s in monthly.series
+                  if s.scenario != "PL") == 1 for i in range(n)),
+          f"{last} actual then {n - last} forecast, no overlap")
+
+    for name, series, source in (("actual and forecast", cum, month),
+                                 ("plan", cum_pl, plan)):
+        worst, total = 0.0, 0.0
+        for value, drawn in zip(source, series):
+            total += value
+            worst = max(worst, abs(total - drawn))
+        check(f"the {name} cumulative is the running sum of its own months",
+              worst < 1e-9, f"largest disagreement {worst:.2e}")
+
+    # December is the one month where a year-to-date total and a twelve-month
+    # rolling total mean the same thing, so they have to agree exactly. If the
+    # moving total were accumulated from anything but these same months, this
+    # is where it would show.
+    check("the moving annual total meets the cumulative at December",
+          abs(mat[-1] - cum[-1]) < 1e-9,
+          f"both {mat[-1]:,.0f} $m")
+
+    # Recomputed from the harvest rather than trusted: each total is this month
+    # and the eleven before it, which for January reaches back into the prior
+    # year - the series the reference had to transcribe because its page did
+    # not carry them.
+    worst = 0.0
+    for i in range(n):
+        total = 0.0
+        for back in range(12):
+            m, y = i + 1 - back, A.C07C_YEAR
+            while m < 1:
+                m, y = m + 12, y - 1
+            total += (month[m - 1] if y == A.C07C_YEAR
+                      else A._c07c_result((y, m)))
+        worst = max(worst, abs(total - mat[i]))
+    check("every moving annual total is its own trailing twelve months",
+          worst < 0.51,
+          f"largest disagreement {worst:.2f} $m, recomputed from the harvest")
+
+    check("the plan is earned premium at the target margin",
+          all(abs(D.excel_round(e * A.TARGET_MARGIN / 100.0) - p) < 1e-9
+              for e, p in zip(v["earned"], plan)),
+          f"{A.TARGET_MARGIN:.1f}% of earned premium, all {n} months")
+
+    check("the actual months carry the margin the releases report",
+          all(abs(A._c07c_result((A.C07C_YEAR, i + 1)) - month[i]) < 0.51
+              for i in range(last)),
+          f"{last} months of earned premium times (100 - combined ratio)")
+
+    # The callouts are derived from the series, so the sentence is what has to
+    # follow the data rather than the other way round.
+    for annotation in t.annotations:
+        index = annotation.target[1]
+        gap = cum[index] - cum_pl[index]
+        check(f"the {t.categories[index]} callout states the gap it points at",
+              annotation.text == f"{gap:+,.0f}",
+              f"{annotation.text} at {t.categories[index]}")
+
+    lo, hi = t.tier_bounds["line"]
+    span = max(max(cum), max(mat), max(cum_pl), max(month))
+    check("every drawn value sits inside the declared axis",
+          lo * span <= min(min(cum), min(month)) and max(mat) <= hi * span,
+          f"axis {lo * span:,.0f}..{hi * span:,.0f} $m over a tallest series "
+          f"of {span:,.0f}")
+
+    stated = {note.scenario for note in t.provenance}
+    check("every scenario drawn declares its provenance",
+          set(t.category_scenarios) | {"PL"} <= stated,
+          f"stated={sorted(stated)}")
+
+    check("only the constructed scenarios are marked assumed",
+          {note.scenario for note in t.provenance
+           if note.basis == "assumed"} == {"PL", "FC"},
+          "the actual months are derived from two reported figures, not "
+          "assumed")
+
+
+def _walk_checks(t: D.Template, check, span: float, opening: float) -> None:
+    """Shared by both bridges: the steps must walk from opening to closing."""
+    steps = t.tier("wf").merged()
+    total = opening + sum(steps)
+    closing = [s for s in t.summary_rows if not s.before and s.stack]
+    stated = sum(value for _scenario, value in closing[0].stack)
+    check("the steps walk from the opening total to the closing one",
+          abs(total - stated) < 0.51,
+          f"{opening:,.0f} + {sum(steps):+,.0f} = {total:,.0f}, "
+          f"closing bar says {stated:,.0f}")
+
+    lo, hi = t.tier_bounds["wf"]
+    # Every level the walk passes through, not just its ends - a step that
+    # overshoots and comes back would clear an endpoints-only check.
+    level, levels = opening, [opening]
+    for step in steps:
+        level += step
+        levels.append(level)
+    check("the bridge stays inside its own window",
+          lo * span - 1e-6 <= min(levels) and max(levels) <= hi * span + 1e-6,
+          f"window {lo * span:,.0f}..{hi * span:,.0f} holds a walk through "
+          f"{min(levels):,.0f}..{max(levels):,.0f}")
+    check("the window is not a negative axis under a positive measure",
+          lo >= 0.0 or min(levels) < 0.0,
+          f"lowest level {min(levels):,.0f}, window floor {lo * span:,.0f}")
+
+    # The invariant that makes the sheet mean anything: the bridge and the
+    # columns it bridges must be on one ruler. Their axes are different
+    # windows, so equal ranges would be wrong - what has to match is the
+    # dollars each point of chart height is worth. Checked here as well as in
+    # test_rescale because it needs no Excel, and because choosing a sensible
+    # window for each tier independently is exactly how it gets broken.
+    name = f"{t.id}{t.variant}"
+    extent = {spec.key: spec.plot_extent for spec in L.LAYOUTS[name].tiers}
+    per_point = {}
+    for key in L.LAYOUTS[name].same_unit_tiers:
+        low, high = t.tier_bounds[key]
+        per_point[key] = (high - low) * span / extent[key]
+    worst = max(per_point.values()) - min(per_point.values())
+    check("the bridge and its columns are on one ruler",
+          worst < 1e-6,
+          ", ".join(f"{k} {v:,.3f} $m/pt" for k, v in per_point.items()))
+
+
+def _c06f(t: D.Template, check) -> None:
+    ac = t.tier("measure").series_for("AC").values
+    py = t.tier("measure").series_for("PY").values
+    wf = t.tier("wf").merged()
+    rel = t.tier("var_rel").merged()
+    n = len(t.categories)
+
+    check("every series is the full category length",
+          all(len(x) == n for x in (ac, py, wf, rel)), f"{n} categories")
+
+    worst = max(abs((a - p) - v) for a, p, v in zip(ac, py, wf))
+    check("each step is this year less last year",
+          worst < 1e-9, f"largest disagreement {worst:.2e}")
+
+    worst = max(abs(v / p * 100.0 - r) for v, p, r in zip(wf, py, rel))
+    check("each percentage is its own step over its own base",
+          worst < 1e-9, f"largest disagreement {worst:.2e}")
+
+    # Variant F *is* the ordering, so it is asserted rather than assumed - and
+    # the catch-all is exempt because it is pinned last on purpose.
+    named = wf[:-1]
+    check("rows are sorted by step size, largest first",
+          all(a >= b for a, b in zip(named, named[1:])),
+          f"{len(named)} named states, {named[0]:+,.0f} down to "
+          f"{named[-1]:+,.0f}")
+    check("the catch-all is pinned last however large it is",
+          t.categories[-1] == "All other" and wf[-1] > max(named),
+          f"All other adds {wf[-1]:+,.0f}, more than any named state")
+
+    opening = sum(value for _s, value in
+                  [s.stack[0] for s in t.summary_rows if s.before][0:1])
+    _walk_checks(t, check, A._C06F_SPAN, opening)
+
+    # The message makes an arithmetic claim; it has to be true.
+    check("the message's claim about the catch-all holds",
+          wf[-1] > sum(named),
+          f"outside the top ten {wf[-1]:+,.0f} vs all ten named "
+          f"{sum(named):+,.0f}")
+
+    check("both years tie to the filing's own total",
+          abs(sum(ac) - A._c06f_total_ac) < 1e-9
+          and abs(sum(py) - A._c06f_total_py) < 1e-9,
+          f"{A._c06f_total_ac:,.0f} and {A._c06f_total_py:,.0f} $m")
+
+    check("no plan is claimed where none is published",
+          not any(s.reference == "PL" for s in t.summary_rows)
+          and not any(note.scenario == "PL" for note in t.provenance),
+          "no PL row, no PL provenance note")
+
+    stated = {note.scenario for note in t.provenance}
+    check("every scenario drawn declares its provenance",
+          set(t.category_scenarios) | {"PY"} <= stated,
+          f"stated={sorted(stated)}")
+
+
+def _c05x(t: D.Template, check) -> None:
+    measure = t.tier("measure")
+    plan = measure.series_for("PL").values
+    drawn = [a if a is not None else f for a, f in
+             zip(measure.series_for("AC").values,
+                 measure.series_for("FC").values)]
+    wf = t.tier("wf").merged()
+    rel = t.tier("var_rel").merged()
+    n = len(t.categories)
+
+    check("every series is the full category length",
+          all(len(x) == n for x in (plan, drawn, wf, rel)), f"{n} categories")
+
+    # Only the scenarios that partition the timeline. The reference series -
+    # prior year and plan - run the full year alongside them by design.
+    check("no month is drawn twice or left empty",
+          all(sum(s.values[i] is not None for s in measure.series
+                  if s.scenario in ("AC", "FC")) == 1 for i in range(n)),
+          f"{A.C05X_LAST_ACTUAL} actual then {n - A.C05X_LAST_ACTUAL} forecast")
+
+    # From the data module: the sheet derives the per-month reference as
+    # measure less variance rather than drawing it as a fourth bar.
+    prior = list(A.C05X_PY_VALUES)
+    worst = max(abs((m - p) - v) for m, p, v in zip(drawn, prior, wf))
+    check("each step is the month less the same month last year",
+          worst < 1e-9, f"largest disagreement {worst:.2e}")
+
+    worst = max(abs(v / p * 100.0 - r) for v, p, r in zip(wf, prior, rel))
+    check("each percentage is its own step over its own base",
+          worst < 1e-9, f"largest disagreement {worst:.2e}")
+
+    # The bridge walks from whichever opening column carries its reference, and
+    # it reads that column from the row directly above the months - so the
+    # seeding column has to be the last of the pair.
+    openings = [row for row in t.summary_rows if row.before]
+    reference = t.tier("wf").reference
+    check("the prior year is drawn once, on the opening column",
+          not any(sr.scenario == "PY" for sr in measure.series),
+          "three bars a month, not four")
+    check("the opening column the bridge walks from sits next to the months",
+          openings[-1].stack[0][0] == reference,
+          f"walks from {reference}, last opening column is "
+          f"{openings[-1].label!r}")
+
+    check("the plan is earned premium at the target margin",
+          all(abs(D.excel_round(e * A.TARGET_MARGIN / 100.0) - p) < 1e-9
+              for e, p in zip(A.C07C_VALUES["earned"], plan)),
+          f"{A.TARGET_MARGIN:.1f}% of earned premium, all {n} months")
+
+    # The point of building this sheet from C07C's series rather than its own:
+    # two notations over one set of figures cannot drift apart.
+    check("the months are C07C's months, not a second calculation of them",
+          tuple(drawn) == tuple(A.C07C_VALUES["monthly"])
+          and tuple(plan) == tuple(A.C07C_VALUES["plan"]),
+          "identical to the cumulative sheet's own series")
+
+    _walk_checks(t, check, A._C05X_SPAN, A.C05X_PY_TOTAL)
+
+    check("the closing bar splits actual from forecast",
+          [s for s in t.summary_rows if not s.before and s.stack][0].stack
+          == (("AC", A._c05x_ac), ("FC", A._c05x_fc)),
+          f"{A._c05x_ac:,.0f} measured, {A._c05x_fc:,.0f} expected")
+
+    check("the message names the month that actually moves most",
+          f"{D.MONTHS[max(range(n), key=lambda i: abs(wf[i]))]} contributing"
+          in t.title.message,
+          "recounted from the steps rather than asserted")
+
+    stated = {note.scenario for note in t.provenance}
+    check("every scenario drawn declares its provenance",
+          set(t.category_scenarios) | {"PL", "PY"} <= stated,
+          f"stated={sorted(stated)}")
+
+    check("only the constructed scenarios are marked assumed",
+          {note.scenario for note in t.provenance
+           if note.basis == "assumed"} == {"PL", "FC"},
+          "the reported months are derived from two filed figures")
+
+
+def _t01b(t: D.Template, check) -> None:
+    n = len(t.categories)
+    elements = [i for i, row in enumerate(t.rows) if row.kind == "element"]
+
+    check("every tier is the full row length",
+          all(len(tier.merged()) == n for tier in t.tiers),
+          f"{n} rows across {len(t.tiers)} tiers")
+
+    check("the table carries both periods and both references",
+          {tier.key for tier in t.tiers} == {
+              f"{stem}_{suffix}" for suffix in ("month", "ytd")
+              for stem in ("m", "dpy", "dpyp", "dpl", "dplp")},
+          "month and year to date, each against prior year and plan")
+
+    # A table has to add up. The subtotals are derived from the elements
+    # precisely so that they do, on every scenario and in both periods.
+    for suffix, block in (("month", A.T01B_MONTH_BLOCK),
+                          ("ytd", A.T01B_YTD_BLOCK)):
+        for scenario in ("AC", "PY", "PL"):
+            values = block[scenario]
+            personal = sum(values[i] for i in (0, 1, 2))
+            total = sum(values[i] for i in elements)
+            check(f"{suffix} {scenario}: the hierarchy closes",
+                  abs(personal - values[3]) < 1e-9
+                  and abs(total - values[6]) < 1e-9,
+                  f"parts {personal:,.0f} = Personal Lines {values[3]:,.0f}; "
+                  f"elements {total:,.0f} = Companywide {values[6]:,.0f}")
+
+    for tier in t.tiers:
+        if tier.kind != "variance_abs":
+            continue
+        suffix = tier.key.split("_", 1)[1]
+        block = A.T01B_MONTH_BLOCK if suffix == "month" else A.T01B_YTD_BLOCK
+        worst = max(abs((a - r) - v) for a, r, v in
+                    zip(block["AC"], block[tier.reference], tier.merged()))
+        check(f"{tier.key} is actual less {tier.reference}",
+              worst < 1e-9, f"largest disagreement {worst:.2e}")
+
+    for tier in t.tiers:
+        if tier.kind != "variance_rel":
+            continue
+        suffix = tier.key.split("_", 1)[1]
+        block = A.T01B_MONTH_BLOCK if suffix == "month" else A.T01B_YTD_BLOCK
+        reference = block[tier.reference]
+        drawn = tier.merged()
+        worst = max((abs((a - r) / r * 100.0 - d)
+                     for a, r, d in zip(block["AC"], reference, drawn)
+                     if r > 0 and d is not None), default=0.0)
+        check(f"{tier.key} is its own variance over its own base",
+              worst < 1e-9, f"largest disagreement {worst:.2e}")
+        check(f"{tier.key} draws nothing on a non-positive base",
+              all(d is None for r, d in zip(reference, drawn) if r <= 0),
+              f"{sum(1 for r in reference if r <= 0)} non-positive base(s)")
+
+    # The message ranks the columned segments; the residual is not one.
+    best = max(A._T01B_COLUMNED,
+               key=lambda i: (A.T01B_YTD_BLOCK["AC"][i]
+                              - A.T01B_YTD_BLOCK["PL"][i]))
+    check("the message names the segment that really leads",
+          t.categories[best] in t.title.message and "Other" != t.categories[best],
+          f"{t.categories[best]}, chosen from the columned segments only")
+    check("the message's claim that every columned segment beat target holds",
+          all(A.T01B_YTD_BLOCK["AC"][i] > A.T01B_YTD_BLOCK["PL"][i]
+              for i in A._T01B_COLUMNED),
+          f"{len(A._T01B_COLUMNED)} columned segments, all above target")
+
+    stated = {note.scenario for note in t.provenance}
+    check("every scenario drawn declares its provenance",
+          {"AC", "PY", "PL"} <= stated, f"stated={sorted(stated)}")
+
+
+def _statement(t: D.Template, check) -> None:
+    """Shared by T03A and T04A: they draw one statement, so they share checks."""
+    n = len(t.categories)
+    values = A.T03A_VALUES
+
+    check("every tier is the full row length",
+          all(len(tier.merged()) == n for tier in t.tiers),
+          f"{n} rows across {len(t.tiers)} tiers")
+
+    for scenario in ("AC", "PY", "PL"):
+        v = values[scenario]
+        premium, losses, acquisition, other, expenses, result = v[:6]
+        check(f"{scenario}: the expense lines sum to the expense subtotal",
+              abs((losses + acquisition + other) - expenses) < 0.51,
+              f"{losses:,.0f} + {acquisition:,.0f} + {other:,.0f} = "
+              f"{expenses:,.0f}")
+        check(f"{scenario}: premium less every expense is the result",
+              abs((premium - expenses) - result) < 0.51,
+              f"{premium:,.0f} - {expenses:,.0f} = {result:,.0f}")
+        check(f"{scenario}: each ratio is its own line over premium",
+              all(abs(v[i] - part / premium * 100.0) < 0.06 for i, part in
+                  ((6, losses), (7, expenses))),
+              f"loss {v[6]:.1f}, combined {v[7]:.1f}")
+        check(f"{scenario}: the combined ratio less losses is the expense one",
+              abs((v[7] - v[6]) - (acquisition + other) / premium * 100.0)
+              < 0.11,
+              f"{v[7]:.1f} - {v[6]:.1f} = {v[7] - v[6]:.1f}% of premium")
+
+    # The plan basis, asserted rather than described: the whole point of the
+    # plan column is that it lands on the stated target.
+    check("the plan lands exactly on the stated combined ratio",
+          abs(values["PL"][7] - A.TARGET_COMBINED_RATIO) < 0.05,
+          f"{values['PL'][7]:.1f} against a {A.TARGET_COMBINED_RATIO:.0f} "
+          f"target")
+    check("the plan holds the expense ratio where it actually landed",
+          abs(A._t03a_expense("PL") - A._t03a_expense("AC")) < 0.05,
+          f"{A._t03a_expense('PL'):.1f}% in both columns, so the target falls "
+          f"wholly on losses")
+    check("only premium is shared between actual and plan",
+          values["PL"][0] == values["AC"][0]
+          and values["PL"][1] != values["AC"][1],
+          "a combined ratio target says nothing about how much to write")
+
+    for tier in t.tiers:
+        if tier.kind not in ("variance_abs", "variance_rel"):
+            continue
+        reference = values[tier.reference]
+        drawn = tier.merged()
+        if tier.kind == "variance_abs":
+            worst = max(abs((a - r) - d) for a, r, d
+                        in zip(values["AC"], reference, drawn))
+        else:
+            worst = max((abs((a - r) / r * 100.0 - d) for a, r, d
+                         in zip(values["AC"], reference, drawn)
+                         if r > 0 and d is not None), default=0.0)
+        check(f"{tier.key} agrees with the columns it is drawn from",
+              worst < 1e-9, f"largest disagreement {worst:.2e}")
+
+    check("the message's claim about where the gain came from holds",
+          values["AC"][6] < values["PY"][6]
+          and A._t03a_expense("AC") > A._t03a_expense("PY"),
+          f"loss ratio {values['PY'][6]:.1f} to {values['AC'][6]:.1f}, "
+          f"expense ratio {A._t03a_expense('PY'):.1f} to "
+          f"{A._t03a_expense('AC'):.1f}")
+
+    stated = {note.scenario for note in t.provenance}
+    check("every scenario drawn declares its provenance",
+          {"AC", "PY", "PL"} <= stated, f"stated={sorted(stated)}")
+
+
+def _t03a(t: D.Template, check) -> None:
+    _statement(t, check)
+    check("the statement carries both references",
+          {tier.key for tier in t.tiers} == {"m", "dpy", "dpyp", "dpl", "dplp"},
+          "prior year and plan, in figures only")
+
+
+def _t04a(t: D.Template, check) -> None:
+    _statement(t, check)
+    check("the bar sheet drops the prior-year pair",
+          {tier.key for tier in t.tiers} == {"m", "dpl", "dplp"},
+          "no room for four variance columns beside two panels")
+    check("T03A and T04A draw the same statement",
+          t.categories == A.T03A.categories
+          and t.tier("m").series_for("AC").values
+          == A.T03A.tier("m").series_for("AC").values,
+          "one block, two sheets")
+
+    # The panel ruler is the template's own, sized from these variances - the
+    # layout's is pixels per kEUR against a statement a thousand times smaller.
+    _bar_fit(t, check, L.T04A_TABLE.panel_value_width)
+
+
+def _bar_fit(t: D.Template, check, panel_value_width: float) -> None:
+    """Every bar inside its panel, and no panel wider than it needs to be.
+
+    Each side of zero is checked on its own. A single "longest bar fits the
+    shorter side" test was what let these panels keep the reference's zero
+    position - two-thirds of the way across, for adverse variances this data
+    barely has - and that blank two-thirds is what made the columns too wide.
+    """
+    # Geometry without a panel tier is the silent failure: the column exists,
+    # holds the right number, and prints it. The sheet looks finished and is
+    # not the template.
+    check("every panel with geometry is actually drawn as one",
+          set(t.panel_geometry) == set(t.panel_tiers),
+          f"{len(t.panel_tiers)} tiers drawn as bars")
+
+    for key, panel in sorted(t.panel_geometry.items()):
+        drawn = [v for v in t.tier(key).merged() if v is not None]
+        left = max(0.0, -min(drawn)) * panel.scale
+        right = max(0.0, max(drawn)) * panel.scale
+        check(f"the {key} bars stay inside their panel",
+              left <= panel.zero_px + 1e-6
+              and right <= panel.width_px - panel.zero_px + 1e-6,
+              f"{left:.0f}px left of a zero at {panel.zero_px}, "
+              f"{right:.0f}px right of it in {panel.width_px}px")
+        column = panel_value_width * panel.width_px / 64.0
+        check(f"the {key} column is no wider than the bars need",
+              column <= 18.05,
+              f"{column:.1f} characters wide")
+
+
+def _t02a(t: D.Template, check) -> None:
+    n = len(t.categories)
+    elements = [i for i, row in enumerate(t.rows) if row.kind == "element"]
+
+    check("the bar table drops the prior-year pair",
+          {tier.key for tier in t.tiers} == {
+              "m_month", "dpl_month", "dplp_month",
+              "m_ytd", "dpl_ytd", "dplp_ytd"},
+          "measure and plan variance, month and year to date")
+
+    check("T01B and T02A draw the same table",
+          t.categories == A.T01B.categories
+          and t.tier("m_ytd").series_for("AC").values
+          == A.T01B.tier("m_ytd").series_for("AC").values,
+          "two blocks, two sheets")
+
+    for suffix, block in (("month", A.T01B_MONTH_BLOCK),
+                          ("ytd", A.T01B_YTD_BLOCK)):
+        for scenario in ("AC", "PL"):
+            values = block[scenario]
+            check(f"{suffix} {scenario}: the hierarchy closes",
+                  abs(sum(values[i] for i in (0, 1, 2)) - values[3]) < 1e-9
+                  and abs(sum(values[i] for i in elements) - values[6]) < 1e-9,
+                  f"Personal Lines {values[3]:,.0f}, "
+                  f"Companywide {values[6]:,.0f}")
+        absolute = t.tier(f"dpl_{suffix}").merged()
+        worst = max(abs((a - p) - v) for a, p, v
+                    in zip(block["AC"], block["PL"], absolute))
+        check(f"dpl_{suffix} is actual less plan",
+              worst < 1e-9, f"largest disagreement {worst:.2e}")
+
+    # The claim the notation makes: a month's miss and the year's are drawn at
+    # the same pixels per dollar, so they can be compared by eye. Two panels of
+    # different widths keep that only if one ruler drives both.
+    groups: dict[str, set] = {}
+    for key, panel in t.panel_geometry.items():
+        groups.setdefault(panel.scale_group, set()).add(round(panel.scale, 9))
+    for group, scales in groups.items():
+        check(f"the {group} panels share one ruler",
+              len(scales) == 1,
+              f"{len(t.panel_geometry)} panels, "
+              f"{sorted(scales)} px per unit")
+
+    _bar_fit(t, check, L.T02A_TABLE.panel_value_width)
+
+    check("the panel ruler is the template's own, not the layout's",
+          set(t.panel_geometry) == {"dpl_month", "dplp_month",
+                                    "dpl_ytd", "dplp_ytd"},
+          "the layout's is declared in pixels per kEUR")
+
+    stated = {note.scenario for note in t.provenance}
+    check("every scenario drawn declares its provenance",
+          {"AC", "PL"} <= stated, f"stated={sorted(stated)}")
+
+
+CHECKS = {"C01A": [_c01a], "C02A": [_c02a], "C03A": [_c03a], "C04A": [_c04a],
+          "C09C": [_c09c], "C10D": [_c10d], "C11A": [_c11a], "C12A": [_c12a],
+          "C13D": [_c13d], "C08H": [_c08h], "C07C": [_c07c],
+          "C06F": [_c06f], "C05X": [_c05x], "T01B": [_t01b], "T03A": [_t03a], "T04A": [_t04a], "T02A": [_t02a]}
 
 
 def check_template(template: D.Template) -> None:
