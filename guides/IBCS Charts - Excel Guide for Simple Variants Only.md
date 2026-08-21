@@ -110,10 +110,10 @@ The sheet is a **data zone** on the left of declared width, and the **charts** t
 
 | Sheet | Cells used | Print area |
 |---|---|---|
-| C01A | `A1:E53` | `G1:L71` |
-| C02A | `A1:T47` | `W1:AG73` |
-| C03A | `A1:AC22` | `AD1:AO21` |
-| C04A | `A1:Y29` | `Z1:AI32` |
+| C01A | `A1:F53` | `G1:L69` |
+| C02A | `A1:V47` | `W1:AI67` |
+| C03A | `A1:AC23` | `AD1:AO21` |
+| C04A | `A1:Y30` | `Z1:AI32` |
 | C05X | `A1:AU27` | `AV1:BI36` |
 | C06F | `A1:AM30` | `AN1:BC35` |
 | C12A | `A1:AU30` | `AV1:BD33` |
@@ -249,7 +249,7 @@ Headers on row **10**, data rows **11-22**. Typed cells are `C11:D22` - everythi
 | C | PY | **typed** - `114.6953405017921`, and down |
 | D | Measure | **typed** - `128`, and down |
 | E | ΔPY | `=D11-C11` |
-| F | ΔPY% | `=IF(C11=0,NA(),(D11-C11)/C11*100)` |
+| F | ΔPY% | `=IF(C11<=0,NA(),(D11-C11)/C11*100)` |
 | G | Measure AC | `=IF($B11="AC",$D11,NA())` |
 | H | Measure FC | `=IF($B11="AC",NA(),$D11)` |
 | I | ΔPY up | `=IF($E11>0,$E11,NA())` |
@@ -282,10 +282,10 @@ If these are right the chart cannot go far wrong; if they are wrong no amount of
 
 | Row | Period | Scenario | PY | Measure | ΔPY | ΔPY% | Measure AC | Measure FC |
 |---|---|---|---|---|---|---|---|---|
-| 11 | Jan | AC | 114.6953405017921 | 128 | `=D11-C11` | `=IF(C11=0,NA(),(D11-C11)/C11*100)` | `=IF($B11="AC",$D11,NA())` | `=IF($B11="AC",NA(),$D11)` |
-| 12 | Feb | AC | 133.63636363636363 | 147 | `=D12-C12` | `=IF(C12=0,NA(),(D12-C12)/C12*100)` | `=IF($B12="AC",$D12,NA())` | `=IF($B12="AC",NA(),$D12)` |
-| 13 | Mar | AC | 140.78674948240166 | 136 | `=D13-C13` | `=IF(C13=0,NA(),(D13-C13)/C13*100)` | `=IF($B13="AC",$D13,NA())` | `=IF($B13="AC",NA(),$D13)` |
-| 14 | Apr | AC | 151.9125683060109 | 139 | `=D14-C14` | `=IF(C14=0,NA(),(D14-C14)/C14*100)` | `=IF($B14="AC",$D14,NA())` | `=IF($B14="AC",NA(),$D14)` |
+| 11 | Jan | AC | 114.6953405017921 | 128 | `=D11-C11` | `=IF(C11<=0,NA(),(D11-C11)/C11*100)` | `=IF($B11="AC",$D11,NA())` | `=IF($B11="AC",NA(),$D11)` |
+| 12 | Feb | AC | 133.63636363636363 | 147 | `=D12-C12` | `=IF(C12<=0,NA(),(D12-C12)/C12*100)` | `=IF($B12="AC",$D12,NA())` | `=IF($B12="AC",NA(),$D12)` |
+| 13 | Mar | AC | 140.78674948240166 | 136 | `=D13-C13` | `=IF(C13<=0,NA(),(D13-C13)/C13*100)` | `=IF($B13="AC",$D13,NA())` | `=IF($B13="AC",NA(),$D13)` |
+| 14 | Apr | AC | 151.9125683060109 | 139 | `=D14-C14` | `=IF(C14<=0,NA(),(D14-C14)/C14*100)` | `=IF($B14="AC",$D14,NA())` | `=IF($B14="AC",NA(),$D14)` |
 | ... |  |  |  |  |  |  |  |  |
 
 ### 2.3 Insert the bottom tier
@@ -437,9 +437,9 @@ What is on each sheet, for rebuilding one template rather than learning the meth
 
 | | |
 |---|---|
-| Cells used | `A1:E53` |
-| Print area | `G1:L71` |
-| Formula cells | 54, in 5 shapes |
+| Cells used | `A1:F53` |
+| Print area | `G1:L69` |
+| Formula cells | 54, in 6 shapes |
 | Typed cells | 20 |
 
 **Typed values** - `B10:E14`. Everything else is a formula over these. The cells a reader is meant to edit are shaded; a sheet may also park a constant the engine needs in that range, so go by the shading.
@@ -449,8 +449,9 @@ What is on each sheet, for rebuilding one template rather than learning the meth
 | Cells | Named | Example | Formula |
 |---|---|---|---|
 | `B29:E34` | - | `B29` | `=IF(ISBLANK(B10),NA(),B10/$B$17)` |
-| `B48:E53` | - | `B48` | `=IF(ISBLANK(B10),"",IF(B10<3.6,"",TEXT(B10,"0.0")))` |
+| 20 cells in `B48:E53` | - | `B48` | `=IF(ISBLANK(B10),"",IF(B10/120*264<(LEN(TEXT(B10,"0.0")))*5,"",TEXT(B10,"0.0")))` |
 | `B15:E15` | Total | `B15` | `=SUM(B10:B14)` |
+| `B52:E52` | - | `B52` | `=IF(ISBLANK(B14),"",IF(B14/120*264<(LEN(TEXT(B14,"0.0"))+LEN(TEXT(B15,"0.0")))*5,"",TEXT(B14,"0.0")))` |
 | `B7` | Subject | `B7` | `=B2&IF(B3="",""," in "&B3)` |
 | `B17` | span | `B17` | `=MAX(AGGREGATE(4,6,B15:E15),0.000000001)` |
 
@@ -477,9 +478,9 @@ What is on each sheet, for rebuilding one template rather than learning the meth
 
 | | |
 |---|---|
-| Cells used | `A1:T47` |
-| Print area | `W1:AG73` |
-| Formula cells | 173, in 5 shapes |
+| Cells used | `A1:V47` |
+| Print area | `W1:AI67` |
+| Formula cells | 173, in 6 shapes |
 | Typed cells | 57 |
 
 **Typed values** - `B10:T12`. Everything else is a formula over these. The cells a reader is meant to edit are shaded; a sheet may also park a constant the engine needs in that range, so go by the shading.
@@ -489,8 +490,9 @@ What is on each sheet, for rebuilding one template rather than learning the meth
 | Cells | Named | Example | Formula |
 |---|---|---|---|
 | `B27:T30` | - | `B27` | `=IF(ISBLANK(B10),NA(),B10/$B$15)` |
-| `B44:T47` | - | `B44` | `=IF(ISBLANK(B10),"",IF(B10<15,"",TEXT(B10,"# ##0")))` |
+| 57 cells in `B44:T47` | - | `B44` | `=IF(ISBLANK(B10),"",IF(B10/500*492.8<(LEN(TEXT(B10,"# ##0")))*5,"",TEXT(B10,"# ##0")))` |
 | `B13:T13` | Total | `B13` | `=SUM(B10:B12)` |
+| `B46:T46` | - | `B46` | `=IF(ISBLANK(B12),"",IF(B12/500*492.8<(LEN(TEXT(B12,"# ##0"))+LEN(TEXT(B13,"# ##0")))*5,"",TEXT(B12,"# ##0")))` |
 | `B7` | Subject | `B7` | `=B2&IF(B3="",""," in "&B3)` |
 | `B15` | span | `B15` | `=MAX(AGGREGATE(4,6,$B$13:$T$13),0.000000001)` |
 
@@ -498,7 +500,7 @@ What is on each sheet, for rebuilding one template rather than learning the meth
 
 | Name | Type | Left | Top | Width | Height | Series | Axis |
 |---|---|---|---|---|---|---|---|
-| `panel_channel` | Stacked Bar | 1175.5 | 81 | 506.7 | 520 | 4 | 0 to 1.0081 |
+| `panel_channel` | Stacked Bar | 1175.5 | 81 | 560 | 470.5 | 4 | 0 to 1.0081 |
 
 | Chart | Series | Fill | Marker | Stem | Labelled |
 |---|---|---|---|---|---|
@@ -515,7 +517,7 @@ What is on each sheet, for rebuilding one template rather than learning the meth
 
 | | |
 |---|---|
-| Cells used | `A1:AC22` |
+| Cells used | `A1:AC23` |
 | Print area | `AD1:AO21` |
 | Hidden scale columns | `O` |
 | Formula cells | 279, in 23 shapes |
@@ -531,7 +533,7 @@ What is on each sheet, for rebuilding one template rather than learning the meth
 | `V11:W22` | abs_up scaled, abs_dn scaled | `V11` | `=I11/$O$11` |
 | `AB11:AC22` | rel_up_len scaled, rel_dn_len scaled | `AB11` | `=M11/$P$11` |
 | `E11:E22` | ΔPY | `E11` | `=D11-C11` |
-| `F11:F22` | ΔPY% | `F11` | `=IF(C11=0,NA(),(D11-C11)/C11*100)` |
+| `F11:F22` | ΔPY% | `F11` | `=IF(C11<=0,NA(),(D11-C11)/C11*100)` |
 | `G11:G22` | Measure AC | `G11` | `=IF($B11="AC",$D11,NA())` |
 | `H11:H22` | Measure FC | `H11` | `=IF($B11="AC",NA(),$D11)` |
 | `I11:I22` | ΔPY up | `I11` | `=IF($E11>0,$E11,NA())` |
@@ -570,7 +572,7 @@ What is on each sheet, for rebuilding one template rather than learning the meth
 
 | | |
 |---|---|
-| Cells used | `A1:Y29` |
+| Cells used | `A1:Y30` |
 | Print area | `Z1:AI32` |
 | Hidden scale columns | `M` |
 | Formula cells | 364, in 19 shapes |
@@ -585,7 +587,7 @@ What is on each sheet, for rebuilding one template rather than learning the meth
 | 57 cells in `P11:U29` | measure scaled, abs_up scaled, abs_dn scaled | `P11` | `=C11/$M$11` |
 | `X11:Y29` | rel_up scaled, rel_dn scaled | `X11` | `=I11/$N$11` |
 | `E11:E29` | PL | `E11` | `=C11-D11` |
-| `F11:F29` | ΔPL% | `F11` | `=IF(E11=0,NA(),D11/E11*100)` |
+| `F11:F29` | ΔPL% | `F11` | `=IF(E11<=0,NA(),D11/E11*100)` |
 | `G11:G29` | ΔPL up | `G11` | `=IF($D11>0,$D11,NA())` |
 | `H11:H29` | ΔPL down | `H11` | `=IF($D11<0,$D11,NA())` |
 | `I11:I29` | ΔPL% up | `I11` | `=IF($F11>0,$F11,NA())` |
@@ -689,7 +691,7 @@ What is on each sheet, for rebuilding one template rather than learning the meth
 | `tier_wf` | `up AC` | solid #8CB400 | None | - | yes |
 | `tier_wf` | `down AC` | solid #FF0000 | None | - | yes |
 | `tier_wf` | `up FC` | Wide upward diagonal, #8CB400 on #FFFFFF | None | - | yes |
-| `tier_wf` | `down FC` | Wide upward diagonal, #FF0000 on #FFFFFF | None | - |  |
+| `tier_wf` | `down FC` | Wide upward diagonal, #FF0000 on #FFFFFF | None | - | yes |
 | `tier_measure` | `PY bar` | solid #A6A6A6 | None | - | yes |
 | `tier_measure` | `PL bar` | solid #FFFFFF | None | - | yes |
 | `tier_measure` | `AC bar` | solid #404040 | None | - | yes |
@@ -805,7 +807,7 @@ What is on each sheet, for rebuilding one template rather than learning the meth
 | 40 cells in `AD11:AI30` | py_sub text, ac_sub text | `AD11` | `=IF(ISNA(K11),"",TEXT(K11,"#,##0"))` |
 | 26 cells in `H12:M29` | + Consulting | `H12` | `=G11` |
 | `E11:E30` | ΔPY | `E11` | `=D11-C11` |
-| `F11:F30` | ΔPY% | `F11` | `=IF(C11=0,NA(),(D11-C11)/C11*100)` |
+| `F11:F30` | ΔPY% | `F11` | `=IF(C11<=0,NA(),(D11-C11)/C11*100)` |
 | `J11:J30` | PY adds | `J11` | `=IF(B11>0,ABS(G11-H11),0)` |
 | `K11:K30` | PY subs | `K11` | `=IF(B11<0,ABS(G11-H11),0)` |
 | `O11:O30` | AC adds | `O11` | `=IF(B11>0,ABS(L11-M11),0)` |
