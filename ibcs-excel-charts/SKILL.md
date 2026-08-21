@@ -84,10 +84,24 @@ scripts/ibcs_excel.py    win32com renderer, reproducing the SVG geometry
 scripts/ibcs_doc.py      reads a built workbook back: formulas, and how every
                          chart and every point is actually painted
 scripts/ibcs_guide.py    the by-hand build guide written around those facts
+scripts/ibcs_paths.py    where output goes, and where the companion panel-charts
+                         skill is - found rather than assumed
 scripts/test_responsive.py  proves the workbook is still live after an edit
 scripts/test_rescale.py     proves a sheet follows figures 100x larger
+scripts/test_dataset_isolation.py  proves neither renderer reads a figure from
+                            the data module - everything drawn arrives on the
+                            Template it was handed
+scripts/test_provenance.py  proves a constructed figure is marked as one, and
+                            that the marking stays silent on data that has
+                            none
+scripts/compare_render.py   measures a render against the IBCS(R) original;
+                            wants $IBCS_TEMPLATE_REFS, which is not shipped
+scripts/extract_palette.py  reads fills out of those same references
 assets/ibcs-palette.json the house palette, with provenance
 ```
+
+A second dataset adds six scripts and a `datasets/` tree to that list - see
+**Drawing other data** below.
 
 **A table is the same data layer, a second layout engine.** A column of a table
 is a `Tier` - a keyed set of values, optionally measured against a scenario - and
