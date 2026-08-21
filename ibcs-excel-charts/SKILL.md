@@ -222,7 +222,8 @@ the IBCS Institute's own images of all 63 published variants, and they are used
 here only to measure a recreation against its source. `compare_render.py` and
 `extract_palette.py` are the only two scripts that want them; point
 `$IBCS_TEMPLATE_REFS` at your own copy, or skip those two - nothing else needs
-them. Everything the skill builds, it builds from `ibcs_data.py`.
+them. The recreation is built from `ibcs_data.py` and the Progressive
+workbooks from `ibcs_data_alt.py`, and neither renderer reads an image.
 
 **All seventeen build end to end in both engines**, in SVG and in Excel:
 **C03A** (multi-tier columns, dPY), **C04A** (multi-tier bars, dPL), **C05X**
