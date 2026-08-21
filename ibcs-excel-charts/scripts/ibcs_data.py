@@ -4908,7 +4908,11 @@ SIMPLE_RULES = {
     # panels share a scale; with one panel there is nothing to share it with,
     # so what is left is an ordinary stacked column chart - which is exactly
     # what someone reaching for "simple" wants.
-    "C01A": {"panels": ("area",), "keep_scenarios": ("AC",)},
+    # How many panels to keep, not which one by name. "area" is what the
+    # reference happens to call its first cut; a dataset whose panels are
+    # "segment" and "state" kept none of them, and the sheet failed on an
+    # empty max() rather than saying so.
+    "C01A": {"panels": 1, "keep_scenarios": ("AC",)},
     # C02A is already a single panel. What makes it complex is the two subtotal
     # rows carrying the integrated legend, and the five callouts. Drop the
     # subtotals and it becomes a plain stacked bar - the horizontal counterpart
@@ -4945,7 +4949,12 @@ def simplify(t: Template) -> Template:
 
     panels = t.structure_panels
     if rule.get("panels"):
-        panels = tuple(p for p in panels if p.key in rule["panels"])
+        panels = panels[:rule["panels"]]
+        if not panels:
+            raise ValueError(
+                f"{t.id}{t.variant}: simplifying to {rule['panels']} panel(s) "
+                f"left none - the template carries "
+                f"{len(t.structure_panels)}")
 
     rows = t.rows
     if rule.get("drop_subtotals") and rows:
