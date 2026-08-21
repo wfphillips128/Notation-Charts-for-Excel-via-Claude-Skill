@@ -1583,7 +1583,11 @@ def _run_once(argv: list[str]) -> int:
         print("\ntext block - retyping the unit cell:")
         failures += check_text_is_live(excel, sheet, LAYOUT)
 
-        keep = book.parent / "responsive"
+        # Under build/, not beside the workbook. Pointed at the shipped
+        # workbooks - which is the useful thing to point it at - `book.parent`
+        # is `workbooks/`, so a gate that only reads dropped two untracked PNGs
+        # into a tracked directory and the next commit swept them up.
+        keep = P.build_dir() / "responsive"
         keep.mkdir(parents=True, exist_ok=True)
         for src, name in ((shot_before, "before.png"), (shot_after, "after.png")):
             (keep / name).write_bytes(src.read_bytes())
