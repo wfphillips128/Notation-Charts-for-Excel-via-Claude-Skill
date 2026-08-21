@@ -8,6 +8,12 @@ All **17 IBCS® templates** are recreated end to end: C01–C13 charts and T01�
 tables. Paste your own figures into a sheet's input block and the chart, its
 captions, its variance colours and its axes all follow.
 
+They are drawn twice, from two datasets. Once from the IBCS® Institute's own
+published figures, which is what makes this a fidelity recreation — and once
+from **The Progressive Corporation's SEC filings**, which is what makes it a
+workbook you can paste over without first working out whose numbers you are
+replacing.
+
 > ### Requirements, up front
 >
 > The Excel half of this project drives **Excel itself** through COM. It needs
@@ -28,19 +34,29 @@ captions, its variance colours and its axes all follow.
 
 | | |
 |---|---|
-| [`ibcs-excel-charts/`](ibcs-excel-charts/) | The skill: one data layer, two renderers, and the reasoning behind every choice |
-| [`workbooks/`](workbooks/) | Two finished `.xlsx` files |
+| [`ibcs-excel-charts/`](ibcs-excel-charts/) | The skill: two data layers, two renderers, and the reasoning behind every choice |
+| [`workbooks/`](workbooks/) | Four finished `.xlsx` files — two datasets, two forms each |
 | [`guides/`](guides/) | How to build each of them by hand in Excel |
+| [`docs/`](docs/) | Design notes, including the one that planned the second dataset |
 
 ### The workbooks
 
-| File | What it holds |
-|---|---|
-| `IBCS Charts - Complex Versions.xlsx` | all 17 templates, every tier |
-| `IBCS Charts - Simple Variants Only.xlsx` | the seven templates with a useful base-tier form, drawn with that tier alone |
+| File | Data | What it holds |
+|---|---|---|
+| `IBCS Charts - Complex Versions.xlsx` | Institute | all 17 templates, every tier |
+| `IBCS Charts - Simple Variants Only.xlsx` | Institute | the seven templates with a useful base-tier form, drawn with that tier alone |
+| `IBCS Charts-Progressive - Complex Versions.xlsx` | Progressive | all 17, every tier |
+| `IBCS Charts-Progressive - Simple Variants Only.xlsx` | Progressive | the same seven, that tier alone |
 
-Each opens on a **Read me**, then one sheet per template in template-id order.
-Every sheet prints on **one page**.
+**Which pair you want.** The Institute pair *is* the recreation — its cells hold
+the published figures, and it exists to be measured against its source. The
+Progressive pair is the one to paste over: every figure in it belongs to a real
+company, so none of them is a number you have to identify before you can replace
+it. See [The second dataset](#the-second-dataset).
+
+Each opens on a **Read me**, then one sheet per template in template-id order;
+the Progressive pair carries a **Sources** sheet as well. Every sheet prints on
+**one page**.
 
 In [`guides/`](guides/) is an **Excel Guide** for each — how to build that workbook by hand
 in Excel, with nothing but the menus. Part 1 is the sheet skeleton every template
@@ -113,6 +129,13 @@ printed — 127 checks — and both renderers call it before drawing anything.
 A total with components is a formula, never an input: a total that does not
 follow its parts is the same lie a static variance colour is.
 
+That gate is **vacuous on any other data, and it fails open**. Its per-template
+checks read the recreation's own module globals, so handed a template built from
+somebody else's figures it re-proves the Institute's numbers against themselves
+and passes. The second dataset therefore brings its own — `test_alt_ties.py`,
+**211 checks**, every one of them reading the template it was given — and it
+runs before the workbook is built rather than after.
+
 ### The Excel and the SVG cannot disagree
 
 They are two renderers over one data layer. Geometry is solved in SVG first,
@@ -120,6 +143,51 @@ where working out where a pin head goes is arithmetic, and then ported to
 Excel, where it is a fight. Fidelity is measured rather than judged — C12A's
 eighty bars land within 4px of the published reference, C09C's 149 markers 144
 of them exact to the centre pixel, and so on for all seventeen.
+
+---
+
+## The second dataset
+
+A fidelity recreation is a poor file to paste your own numbers into. Its cells
+hold the Institute's published figures, and you cannot tell which of them are
+Furniture Inc.'s without checking each one. That is the point of a recreation
+and the problem with using it as a template.
+
+So the seventeen are drawn a second time, from **The Progressive Corporation
+(PGR)** — a real insurer's real, public figures.
+
+**Nothing is transcribed by hand.** `fetch_pgr.py` harvests the filings from SEC
+EDGAR, `pgr_parse.py` reads them, and `ibcs_data_alt.py` reads what those write
+into [`datasets/pgr/`](ibcs-excel-charts/datasets/pgr/). That is what lets the
+figures be checked rather than trusted. `test_pgr_reconcile.py` runs **605
+checks against Progressive's own totals**: twelve monthly premium figures from
+twelve separate news releases summing to the annual number in the audited 10-K,
+every release's prior-year column agreeing with the release of twelve months
+before, segments adding to companywide. A reconciliation against the source is a
+stronger claim than internal consistency, and it is the one thing invented
+figures could never have offered.
+
+**Eleven of the seventeen templates want a plan or a forecast, and no public
+company files one.** Those are constructed from Progressive's own long-stated
+underwriting target — a **96 combined ratio**, which is a 4% margin — so plan
+underwriting profit is `net premiums earned × 4 / 100`. The rule is printed on
+each sheet that uses it.
+
+**A constructed figure is not allowed to look reported.** Each template declares
+where its scenarios came from, and the workbook shades an *assumed* scenario's
+typed cells differently from a reported one's, with a **Sources** sheet saying
+what was assumed and why. `test_provenance.py` checks both directions — that the
+marking marks, and that a template declaring nothing comes out exactly as it did
+before the facility existed. A feature that quietly restyles already-published
+work is a defect however good the feature is.
+
+**Neither dataset can leak into the other.** Three templates used to reach past
+the template they were handed and read module globals — C08H's opening balance,
+C09C's iso-curves, C13D's panel figures — which fails *silently*: a global left
+behind draws one company's numbers on a sheet titled with another's.
+`test_dataset_isolation.py` asserts the property rather than the fix. Every name
+a renderer reads out of `ibcs_data` must be a type, a helper, a registry or a
+`Template`; anything else is data, and data arrives through the argument.
 
 ---
 
@@ -153,11 +221,22 @@ python .../ibcs-excel-charts/scripts/ibcs_svg.py --template C04A
 python .../ibcs-excel-charts/scripts/ibcs_excel.py --template C03A,C04A \
     --out book.xlsx --doc "book - Excel Guide.md"
 
-# The gates
-python .../ibcs-excel-charts/scripts/ibcs_data.py          # 127 tie-outs
-python .../ibcs-excel-charts/scripts/test_responsive.py    # the workbook is still live
-python .../ibcs-excel-charts/scripts/test_rescale.py       # it follows other numbers
+# The same templates on the Progressive data - its own entry point, because
+# ibcs_excel's CLI resolves templates from ibcs_data
+python .../ibcs-excel-charts/scripts/build_alt.py pgr.xlsx \
+    --doc "pgr - Excel Guide.md"
+
+# The gates - the recreation
+python .../ibcs-excel-charts/scripts/ibcs_data.py             # 127 tie-outs
+python .../ibcs-excel-charts/scripts/test_responsive.py       # the workbook is still live
+python .../ibcs-excel-charts/scripts/test_rescale.py          # it follows other numbers
 python .../ibcs-excel-charts/scripts/ibcs_doc.py --xlsx book.xlsx --check
+
+# The gates - the second dataset
+python .../ibcs-excel-charts/scripts/test_alt_ties.py         # 211 tie-outs
+python .../ibcs-excel-charts/scripts/test_pgr_reconcile.py    # 605 checks against PGR's own totals
+python .../ibcs-excel-charts/scripts/test_dataset_isolation.py  # no renderer reaches past its template
+python .../ibcs-excel-charts/scripts/test_provenance.py       # constructed figures are shaded as such
 ```
 
 Output goes to `./build` by default — the current directory, not next to the
@@ -189,8 +268,15 @@ and is not endorsed by or affiliated with the IBCS Association.
 **The IBCS® reference renders are not distributed here.** They are the
 Institute's own images and were used only to measure a recreation against its
 source. Two scripts want them — `compare_render.py` and `extract_palette.py` —
-and both say so plainly if the directory is absent. Nothing else needs them;
-everything this project builds, it builds from `ibcs_data.py`.
+and both say so plainly if the directory is absent. Nothing else needs them: the
+recreation is built from `ibcs_data.py` and the Progressive workbooks from
+`ibcs_data_alt.py`, and neither renderer reads an image.
+
+**Not affiliated with The Progressive Corporation.** The Progressive workbooks
+are an independent presentation of figures that company published in its SEC
+filings and investor-relations releases. They are not that company's reporting,
+and the plan and forecast scenarios in them were never published by it — they
+are constructed here, on a basis stated on the sheet and on the Sources sheet.
 
 **IBCS® prescribes no colour codes.** Rule UN 4.1 says so outright. The palette
 in `assets/ibcs-palette.json` is a house choice with its provenance recorded,
