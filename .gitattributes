@@ -5,3 +5,10 @@
 
 # VBA modules are imported into Excel on Windows, which expects CRLF.
 *.bas text eol=crlf
+
+# Binary by nature. `text=auto` above already detects these by sniffing for NUL
+# bytes, so this fixes nothing today - it says the intent out loud, so a future
+# rule written for text can never catch them, and it keeps `git diff` quiet.
+*.xlsx binary
+*.png  binary
+*.zip  binary

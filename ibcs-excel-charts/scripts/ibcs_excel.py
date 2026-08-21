@@ -5736,6 +5736,13 @@ def build_panel_sheet(excel, sheet, template: D.Template) -> tuple[list[str], li
         panel_names=names,
         period_labels=[_panel_period_label(y) for y in template.categories],
         element_names=["ΔØ %"],
+        # Every point prints its own value, and a negative one hangs BELOW its
+        # marker. Berlin's +343 sets the span for all fifteen panels, so the
+        # deepest variances - Salzburg's -93, St. Gallen's -90 - sit a hair
+        # above the floor and their labels printed through the rule beneath
+        # their band. The engine pads the top of the scale for the same reason
+        # already; this asks for the same at the bottom.
+        floor_headroom=0.10,
         include_zero=True, nticks=3, title="")
 
     # The engine is given the whole sheet below the source block. It writes its
@@ -5794,12 +5801,22 @@ def verify_panel_grid(t: D.Template, grid: D.PanelGrid, builder, sheet,
             f"engine is that a grid of comparable panels is one chart, and "
             f"sixteen charts drift apart the first time a figure changes")
 
+    # The band axis does not start at zero any more. Value 0 is where the
+    # bottom band's lowest content sits, and Excel draws the category axis
+    # wherever zero falls - so the rule at the foot of the grid printed through
+    # the labels. The engine now runs the axis half a band gap lower and
+    # crosses it there. Read the floor off the spec rather than retyping it,
+    # for the reason the engine exposed it as a property: two copies of one
+    # number is one drift. A bare AttributeError here means the companion skill
+    # is older than this check, which is worth failing loudly over.
+    floor = -builder.spec.floor_pad
     axis = chart.Chart.Axes(XL_VALUE)
-    if abs(axis.MinimumScale) > 1e-9 or abs(axis.MaximumScale - grid.rows) > 1e-9:
+    if (abs(axis.MinimumScale - floor) > 1e-9
+            or abs(axis.MaximumScale - grid.rows) > 1e-9):
         problems.append(
             f"the band axis is {axis.MinimumScale}..{axis.MaximumScale}, not "
-            f"0..{grid.rows} - the bands are the scale, so every panel would "
-            f"be drawn on a different one")
+            f"{floor:g}..{grid.rows} - the bands are the scale, so every panel "
+            f"would be drawn on a different one")
 
     # The input block the engine reads must be formulas, not the values it was
     # handed. Checked on a panel that is drawn, not on the empty cell.

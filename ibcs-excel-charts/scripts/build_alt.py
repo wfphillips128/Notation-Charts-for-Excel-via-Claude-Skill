@@ -27,6 +27,12 @@ def main(argv: list[str]) -> int:
                              "template the dataset carries, or the simple "
                              "ones with --simple")
     parser.add_argument("--doc", help="write the by-hand build guide here")
+    parser.add_argument("--export-dir", type=Path, default=None,
+                        help="write a PNG of each sheet's charts here. The "
+                             "panel grid has no gate that can see a label "
+                             "sitting on a rule, so looking at the picture is "
+                             "the check - and until now this build could not "
+                             "produce one.")
     args = parser.parse_args(argv[1:])
 
     # Which templates have a simple form is the library's fact, not a list
@@ -63,7 +69,8 @@ def main(argv: list[str]) -> int:
     templates = [A.TEMPLATES[n] for n in names]
     print(f"building {len(templates)} "
           f"{'simple ' if args.simple else ''}sheet(s): {', '.join(names)}")
-    return E.build(templates, Path(args.out), keep_open=False, export_dir=None,
+    return E.build(templates, Path(args.out), keep_open=False,
+                   export_dir=args.export_dir,
                    simple=args.simple,
                    doc=Path(args.doc) if args.doc else None,
                    check_ties=T.check_template)
