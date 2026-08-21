@@ -1412,7 +1412,7 @@ What is on each sheet, for rebuilding one template rather than learning the meth
 
 | Name | Type | Left | Top | Width | Height | Series | Axis |
 |---|---|---|---|---|---|---|---|
-| `panel_grid` | chart type -4111 | 0 | 1646.5 | 720 | 500 | 13 | 0 to 4 |
+| `panel_grid` | chart type -4111 | 0 | 1646.5 | 720 | 500 | 13 | -0.09 to 4 |
 | `reference_panel` | Clustered Column | 549.9 | 2025.3 | 155.1 | 95.9 | 1 | 0 to 5184 |
 
 | Chart | Series | Fill | Marker | Stem | Labelled |

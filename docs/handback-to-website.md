@@ -116,9 +116,30 @@ repo.
   own layout declared, so it fell back to Excel's defaults — 150% gaps, no
   overlap — and drew the plan *beside* the actual instead of behind it. Both
   workbooks carry C05X and both changed.
-- **C13D's panel scale gained headroom**, so a value label can no longer print
-  through the panel title above it.
+- **C13D's panel scale gained headroom at the top**, so a value label can no
+  longer print through the panel title above it.
+- **And a floor at the bottom — this one landed after you last regenerated.**
+  Two separate fixes, at opposite ends of the same axis. The band axis used to
+  start at value 0, which is where the bottom row's lowest content sits, and
+  Excel draws the category axis wherever zero falls; the rule at the foot of
+  the grid therefore printed through the lowest labels. The axis now runs half
+  a band gap below zero and the category axis crosses it there. Separately, a
+  value label on a negative point hangs *below* its marker, so the data scale
+  gained the same tenth-of-the-range pad at the bottom that it already had at
+  the top. **On the Institute figures that widened the C13D scale from
+  −100..400 to −150..400** — Berlin's +343 sets the span for all fifteen panels,
+  so Salzburg's −93 and St. Gallen's −90 sat a hair above the floor and their
+  labels were struck through by the rule beneath their band. **The Progressive
+  scale is unchanged at −100..250**; its lowest value is nowhere near a step
+  boundary and it never collided. The asymmetry between the two workbooks is
+  the data, not a bug.
 - Smaller fidelity fixes to C02A's band labels and C10D's suppressed labels.
+
+**Only the two Complex workbooks were rebuilt for the floor fix.** The Simple
+pair has seven sheets and none of them is C13D, so it is byte-identical to what
+you already have. The guides moved with their workbooks: each Complex guide now
+says the panel grid's axis is `-0.09 to 4` rather than `0 to 4`, because that
+line is read back out of the file.
 
 The SVG engine never had any of these, so **all seventeen SVGs are
 byte-identical** to what is published. Only the Excel files differ.
