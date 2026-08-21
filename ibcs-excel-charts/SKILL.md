@@ -171,6 +171,50 @@ every caption positioned from plot geometry stay put. `scripts/test_rescale.py`
 pastes figures a hundred times larger into each sheet and asserts nothing plots
 outside its axis.
 
+**The claim above is the one this codebase keeps failing to honour, so it is
+worth knowing where it breaks.** Dividing the *values* by a span is only half of
+it: the *bounds* have to be in the same units, and for a long time they were not.
+The layout declared C03A's axis as `230` - kEUR, measured against the Institute's
+figures - and divided it by the live span. On a company forty-seven times larger
+that put the axis at 0.023 while every normalised bar sat near 1.0, Excel clamped
+them all to the frame, and the chart drew flat while the data varied fourfold.
+Nothing caught it: the geometry verification passed, `test_rescale` passed
+(multiplying inputs scales the span too), the tie-outs passed. Only the picture
+was wrong.
+
+Seven separate defects turned out to share that shape, in **three flavours**, and
+only the first yields to "declare it as a fraction of the span":
+
+| | Examples |
+|---|---|
+| **Magnitude** | axis bounds in kEUR; `LineLayout.maximum = 24` above an inventory of 22 tons; a number format of `0.0` printing `17258.0`; a label-fit floor as a fixed share of the axis; a tolerance of ±1.5 on figures a thousand times larger; `PanelGeometry.scale` in pixels per kEUR |
+| **Shape** | padding and asymmetry that encode *how far* the reference's bridge travels, or *which way* its variances point. These survive conversion to fractions and are still wrong: a window sized for a walk of 14% of its base puts the axis floor below zero when the walk is 228% |
+| **Label** | `'2025 PL'`, a summary row looked up by name - a fact about one year of one company. Raised `KeyError` on the first sheet built from anything else |
+
+So: **a constant in the layout should describe the template, never the figures.**
+Where it cannot, the Template carries its own - `tier_bounds`, `panel_geometry`,
+`TreeSpec.scale_px`, `StructurePanel.number_format`, `Row.ratio_of` - and the
+layout's value is the fallback. And when a constant moves onto the Template,
+*every reader of it has to move too*: `test_rescale` had to learn the same lesson
+three times, because it was asserting the mechanism (`axis x span == the declared
+bound`) rather than the property.
+
+The lesson crosses the skill boundary. `panel-charts` exposes its axis floor as
+`PanelSpec.floor_pad` for the same reason, and `verify_panel_grid` reads it off
+the spec rather than retyping the number - two copies of one constant is one
+drift, whichever side of a dependency they sit on.
+
+`verify_axis_containment` runs inside `build()` for every sheet of every dataset
+and reads each chart's axis and every drawn point back out of Excel. It is
+falsifiable both ways - it fires on 24 of 24 points on the original bug, and is
+silent on correct sheets - and it is the only check that looks at the picture.
+
+It looks at *geometry*, though, and there is one thing it cannot see. Nothing
+here measures a rendered label's box, so a value label printing through a rule
+survives every gate: the digits are struck through, not missing, and everything
+that counts cells passes. That is what `--export-dir` is for on both builders.
+**On the panel grid, export the PNG and look at it.**
+
 Two limits, stated rather than hidden. **C09C and C10D are not normalised** -
 they are the only charts that show a value axis, so dividing by a span would
 print `0.25` where the data says `29.16%`; they are fitted at build time
