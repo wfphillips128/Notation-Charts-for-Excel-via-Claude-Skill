@@ -256,19 +256,98 @@ time a formula changes and nothing catches it, because prose has no tests.
 `--check` runs the other way, asserting that every formula an existing guide
 quotes is still at the address it names.
 
-**Two workbooks ship**, both built from the same code:
+**Four workbooks ship**, two datasets by two forms, all from the same code, each
+with a generated guide beside it in `guides/`:
 
 | File | What it holds |
 |---|---|
 | `IBCS Charts - Complex Versions.xlsx` | all 17 templates with every tier |
-| `IBCS Charts - Excel Guide for Complex Versions.md` | how to build that workbook by hand |
-| `IBCS Charts - Excel Guide for Simple Variants Only.md` | the same, for the simple one |
 | `IBCS Charts - Simple Variants Only.xlsx` | the seven templates with a useful base-tier form - C01A, C02A, C03A, C04A, C05X, C06F, C12A - drawn with that tier only. A scattergram has no tiers to drop, a line chart's tiers are all measures, and a table reduced to one column block is a list rather than a report |
+| `IBCS Charts-Progressive - Complex Versions.xlsx` | the same 17, on a real company's filed figures |
+| `IBCS Charts-Progressive - Simple Variants Only.xlsx` | the same seven, likewise |
+
+The Institute pair *is* the recreation and its cells hold the published figures.
+**The Progressive pair is the one to paste over** - every figure in it belongs to
+a real company, so none of them is a number a reader has to identify before
+replacing. See **Drawing other data** below.
 
 Each has a **Read me** sheet first, then one sheet per template in template-id
 order, and **every sheet prints on one page**: print area set to the chart zone
 alone, `FitToPagesWide/Tall = 1`, gridlines off. The data zone is deliberately
 outside the print area - it is the input, not the deliverable.
+
+## Drawing other data
+
+A fidelity recreation makes a poor file to paste your own numbers into: you
+cannot tell which figures are Furniture Inc.'s without checking each one. So the
+seventeen are drawn a second time, from The Progressive Corporation's SEC
+filings. `references/guide-second-dataset.md` is the whole pipeline; these are
+the seams, and they hold for any dataset.
+
+```
+scripts/ibcs_data_alt.py    the seventeen Templates, read from datasets/pgr/
+scripts/build_alt.py        the entry point - see below
+scripts/fetch_pgr.py        harvests the filings from SEC EDGAR. Not a build step
+scripts/pgr_parse.py        turns one release into figures, keyed on row labels
+scripts/test_alt_ties.py    the tie-outs, and the gate build_alt passes to build()
+scripts/test_pgr_reconcile.py  the harvested months against the audited filing
+datasets/pgr/*.csv          five files; the figures, committed
+```
+
+```bash
+python scripts/build_alt.py pgr.xlsx --doc "pgr - Excel Guide.md"
+python scripts/build_alt.py out.xlsx --template C03A --export-dir pics/
+python scripts/test_alt_ties.py            # 211 tie-outs
+python scripts/test_pgr_reconcile.py       # 605 checks against the filed totals
+python scripts/test_dataset_isolation.py   # no renderer reaches past its template
+python scripts/test_provenance.py          # constructed figures are shaded (Excel)
+```
+
+**`build_alt.py` is separate from `ibcs_excel.py`'s CLI on purpose.** That CLI
+resolves template ids against `ibcs_data`, so it cannot be pointed elsewhere.
+`build()` has always taken the templates it is handed - nothing swaps a module,
+nothing monkeypatches, and that is the property the next rule protects.
+
+**Nothing is read from the data module by name.** Both renderers once reached
+past the `Template` they were given and read module globals - C08H's opening
+balance, C09C's accents and iso-curves, C13D's panel figures, plus C10D's
+suppressed labels and C11A's pixel rulers on the SVG side. That fails *silently*:
+a global left behind does not raise, it draws the first dataset's figures on a
+sheet titled with the second one's entity. `test_dataset_isolation.py` asserts
+the property against the live module rather than a list of forbidden names, so a
+new one fails the day it is written.
+
+**Say where every figure came from, and be finer than "real or invented".**
+`Template.provenance` carries `SourceNote(scenario, basis, detail)` with three
+bases - **filed**, it appears in a source document; **derived**, computed from
+filed figures by a rule; **assumed**, a modelling choice nobody published. A
+company's stated target is filed. Applying that target to a month to make a plan
+figure is assumed: the same number, a different claim.
+`references/reference-provenance.md`.
+
+**Provenance is an Excel facility. The SVG renderer has none.** `ibcs_svg.py`
+reads no `SourceNote`, applies no assumed fill and writes no Sources sheet.
+Never promise a web render that distinguishes a constructed figure from a
+reported one.
+
+**Write real tie-outs, and gate the build on them.** `check_ties()` reads
+`ibcs_data` module globals, so handed another dataset it re-verifies the
+Institute's figures against themselves, passes, and proves nothing. `build()`
+takes a `check_ties` parameter for this, and the gate passed in must **refuse a
+template it has no checks for** - otherwise a sheet can be added without its
+arithmetic ever being checked.
+
+**Real data pays for the work in reconciliation.** Figures from independent
+documents that must agree - twelve monthly releases summing to an audited
+annual, two tables in one filing carrying the same number - catch transcription
+errors that no self-consistency check can, because each one produces plausible,
+wrong numbers rather than an error.
+
+**A workbook of a real company's figures must say it is not that company's
+reporting.** Polished notation on public figures reads as house reporting, so
+generated output carries two disclaimers: the IBCS® one, which says nothing
+about the company, and a non-affiliation statement. Anything built by hand from
+such a dataset has to reproduce both.
 
 ## The template library
 
@@ -326,6 +405,14 @@ categorical colour with a key - the driver tree, where the connectors state a
 calculation and boxes sharing a unit share a scale, and the small-multiple grid,
 where fifteen panels share one ruler and one chart object. Nothing in the
 template library is unbuilt.
+
+## Reference map
+
+| Read this | When you need |
+|---|---|
+| `references/decisions.md` | Which IBCS® variant was chosen for each template and why, how each recreation's fidelity was measured, and the Excel traps that cost the most time |
+| `references/guide-second-dataset.md` | **Before drawing anyone's real figures.** The entry point, the harvest and its SEC user agent, the CSV contract, the four gates, and a checklist for a third dataset |
+| `references/reference-provenance.md` | `SourceNote` and the filed/derived/assumed taxonomy, what the marking changes on a sheet, and the attribution a real company's figures oblige |
 
 ## Related
 
