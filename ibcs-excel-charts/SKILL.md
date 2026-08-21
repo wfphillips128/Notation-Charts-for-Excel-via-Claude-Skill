@@ -1,6 +1,6 @@
 ---
 name: ibcs-excel-charts
-description: Build charts and tables in IBCS® notation (International Business Communication Standards) - the "what means the same must look the same" standard behind scenario notation (AC/PY/PL/BU/FC), variance tiers, message-driven titles, and the 17 IBCS® templates. Produces Excel charts via win32com and self-contained SVG from one shared data layer. Use when the user mentions IBCS, SUCCESS rules, scenario notation, variance charts with pins, multi-tier charts, "what means the same must look the same", Hichert, Zebra BI-style reporting, or asks for a management report chart that follows a formal notation standard.
+description: Build charts and tables in IBCS® notation (International Business Communication Standards) - the "what means the same must look the same" standard behind scenario notation (AC/PY/PL/BU/FC), variance tiers, message-driven titles, and the 17 IBCS® templates. Produces Excel charts via win32com and self-contained SVG from one shared data layer. Use when the user mentions IBCS, SUCCESS rules, scenario notation, variance charts with pins, multi-tier charts, "what means the same must look the same", Hichert, Zebra BI-style reporting, or asks for a management report chart that follows a formal notation standard. Also use when the user wants IBCS charts drawn from their own or a real company's figures rather than a sample - a second dataset, pasting their numbers into an IBCS workbook, or marking which figures are reported, derived or assumed on a Sources sheet.
 ---
 
 # IBCS® notation
