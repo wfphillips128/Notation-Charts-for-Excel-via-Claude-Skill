@@ -1,8 +1,40 @@
 # Building a workbook on data that is not the Institute's
 
-**Status: tentative.** A proposal for this project to consider, not a decided
-plan. The data source is still open — see *What survives a change of data
-source* below, which marks every section as source-independent or not.
+> **Status: SUPERSEDED — this was the plan, and the work shipped on
+> 2026-08-20.** Kept as the record of the reasoning, not as instructions.
+> For what exists, read the README's *The second dataset* section and
+> `ibcs_data_alt.py`.
+>
+> **What the plan got right.** All three findings held: the renderers really
+> did reach past the template they were handed, `ibcs_layout.TEMPLATES` really
+> is the same object, and `check_ties()` really is vacuous on substituted data.
+> Each became a permanent guard rather than a one-off fix —
+> `test_dataset_isolation.py` asserts the *property* (every `ibcs_data` name a
+> renderer reads must be a type, helper, registry or `Template`) instead of
+> keeping the "exhaustive, auditable list" this proposal called for, so a new
+> global fails the day it is written. `test_alt_ties.py` is the second tie-out
+> pass, and it runs before `build()`.
+>
+> **What it got wrong, and it is the useful half.** The data went **real**, so
+> every consequence this document files under *if the data is real* came true
+> at once — and the tie-out strategy inverting was worth more than expected.
+> The target here was ~85–110 internal-consistency checks; what shipped is
+> **211 of those plus 605 reconciliations against Progressive's own filed
+> totals**, which is a strictly stronger claim than anything invented figures
+> could have supported. The estimate below assumed invented data and is
+> therefore not a measurement of anything that happened.
+>
+> **The dataset lives in-repo**, as this document's own table recommends — but
+> as a sibling `ibcs_data_alt.py`, not the "parameter, not a second copy"
+> refactor of `ibcs_excel`. The isolation test bought the same guarantee for a
+> fraction of the cost.
+>
+> **Attribution went further than proposed.** `READ_ME_OWN_DATA` was added as
+> the Excel-side counterpart of `FOOTER_OWN_DATA`, and beyond it
+> `Template.provenance` marks each scenario *filed*, *derived* or *assumed*,
+> shades an assumed scenario's cells differently, and writes a **Sources**
+> sheet. `test_provenance.py` checks both that the marking marks and that a
+> template declaring nothing is left exactly as it was.
 
 ## Why
 
@@ -161,6 +193,15 @@ contain no Institute attribution string; nothing to change there.
 ---
 
 ## Per-template notes
+
+> **Superseded.** These notes assume invented figures authored to fit the
+> layouts. The shipped dataset is real and could not be authored to fit, so the
+> magnitude advice below did not apply and the layout constants moved instead —
+> `tier_bounds`, `panel_geometry`, `TreeSpec.scale_px`,
+> `StructurePanel.number_format` and `Row.ratio_of` are now declared on the
+> `Template` when a layout constant would otherwise describe the figures. C13D
+> was also reframed to 15 year-panels × 12 months rather than keeping the
+> fifteen location keys; the state data went to C02A and C06F.
 
 *Source-dependent: assumes invented data. The structural observations hold
 regardless.*
@@ -338,6 +379,11 @@ print preview one page on three sheets.
 
 ## Effort
 
+> **Superseded.** An estimate for authoring invented figures. The shipped work
+> harvested real ones from SEC EDGAR instead (`fetch_pgr.py`, `pgr_parse.py`),
+> which moved the cost from typing numbers to parsing filings and reconciling
+> them. Do not read the table below as a record of what this took.
+
 *Source-dependent: assumes invented data.* ≈ **34 hours**, dominated by data
 authoring rather than code.
 
@@ -367,7 +413,12 @@ all because of its external dependency.
 
 ---
 
-## Open question
+## Open question — decided: no
+
+> **Decided 2026-08-21: the website keeps its own images.**
+> `render-site-svgs.py` continues to carry its own substituted figures for
+> C03A, C01A and T04A, and is not repointed at `ibcs_data_alt`. The paragraph
+> below is the argument that was made for repointing it; it did not win.
 
 `scripts/render-site-svgs.py` in the `edgewisedata` website repo currently owns
 substituted data for three templates and generates the images that site publishes.
