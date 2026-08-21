@@ -603,7 +603,7 @@ _QUARTER_END = {"03-31": 1, "06-30": 2, "09-30": 3, "12-31": 4}
 
 
 def _facts() -> dict[str, list[dict]]:
-    """The XBRL facts three templates read, by concept, in filing order.
+    """The XBRL facts four templates read, by concept, in filing order.
 
     Read from ``datasets/pgr/xbrl_facts.csv`` beside the other four, and not
     from the companyfacts JSON the harvest caches. That file is 5 MB and lives
