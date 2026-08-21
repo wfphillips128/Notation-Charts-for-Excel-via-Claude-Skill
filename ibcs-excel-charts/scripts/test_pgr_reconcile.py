@@ -26,11 +26,10 @@ enough that a wrong month cannot hide in it.
 from __future__ import annotations
 
 import csv
-import json
 import sys
 from pathlib import Path
 
-import fetch_pgr as F
+import ibcs_data_alt as A
 
 DATA = Path(__file__).resolve().parents[1] / "datasets" / "pgr"
 
@@ -55,9 +54,14 @@ def num(row: dict, key: str) -> float | None:
 
 def annual_npw_from_xbrl() -> dict[int, float]:
     """Progressive's own annual net premiums written, as tagged in its 10-K."""
-    raw = F.fetch("https://data.sec.gov/api/xbrl/companyfacts/CIK0000080661.json",
-                  cache_name="companyfacts.json")
-    facts = json.loads(raw)["facts"]["us-gaap"]["PremiumsWrittenNet"]["units"]["USD"]
+    # From ``datasets/pgr/xbrl_facts.csv``, through the dataset's own reader, so
+    # this gate runs from a clean clone. It used to parse the 5 MB companyfacts
+    # JSON out of the gitignored harvest cache, which made the project's
+    # loudest claim - that these figures reconcile to the audited filing - the
+    # one thing a reader could not check without an SEC user agent and a
+    # network. The two sources stay independent where it matters: the monthly
+    # releases and the 10-K are still different documents.
+    facts = A._usd("PremiumsWrittenNet")
     out: dict[int, float] = {}
     for f in facts:
         start, end = f.get("start"), f.get("end")

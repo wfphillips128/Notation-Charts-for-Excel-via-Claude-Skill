@@ -594,7 +594,7 @@ C12A_AC_YEAR, C12A_PY_YEAR = 2023, 2022
 # label prints the true figure; suppressing that would be misreporting to
 # protect a guard.
 
-_FACTS: dict | None = None
+_FACTS: dict[str, list[dict]] | None = None
 
 # Quarter ends, as XBRL spells them. A fact is a quarter's if its period ends
 # on one of these; the flows are tagged year-to-date, so a discrete quarter is
@@ -602,29 +602,33 @@ _FACTS: dict | None = None
 _QUARTER_END = {"03-31": 1, "06-30": 2, "09-30": 3, "12-31": 4}
 
 
-def _facts() -> dict:
-    """Progressive's XBRL company facts, fetched once and parsed once.
+def _facts() -> dict[str, list[dict]]:
+    """The XBRL facts three templates read, by concept, in filing order.
 
-    Three templates read from this file and each had been opening and parsing
-    it for itself. ``fetch_pgr.fetch`` caches the bytes on disk so the cost was
-    never the network - but three copies of the same six lines is three places
-    for one of them to drift, which is exactly how one fill colour came to be
-    written out fourteen times.
+    Read from ``datasets/pgr/xbrl_facts.csv`` beside the other four, and not
+    from the companyfacts JSON the harvest caches. That file is 5 MB and lives
+    under ``build/``, which is gitignored - so the dataset built from a clean
+    clone, and only the figures thirteen concepts deep were ever wanted from
+    it. Extracting them makes the committed CSVs the whole contract: everything
+    this module needs ships with it, and nothing here touches the network.
+
+    Order is the JSON's own, because a later filing restating an earlier figure
+    has to keep winning - the readers below build dicts and let the last one
+    through.
     """
     global _FACTS
     if _FACTS is None:
-        import json
-
-        import fetch_pgr as F
-
-        _FACTS = json.loads(F.fetch(
-            "https://data.sec.gov/api/xbrl/companyfacts/CIK0000080661.json",
-            cache_name="companyfacts.json"))["facts"]["us-gaap"]
+        out: dict[str, list[dict]] = {}
+        for r in _rows("xbrl_facts.csv"):
+            out.setdefault(r["concept"], []).append(
+                {"start": r["start"] or None, "end": r["end"] or None,
+                 "val": float(r["val"])})
+        _FACTS = out
     return _FACTS
 
 
 def _usd(concept: str) -> list[dict]:
-    return _facts().get(concept, {}).get("units", {}).get("USD", [])
+    return _facts().get(concept, [])
 
 
 def _annual(concept: str) -> dict[int, float]:
